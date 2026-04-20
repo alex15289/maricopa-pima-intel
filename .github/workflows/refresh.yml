@@ -1,0 +1,60 @@
+name: Refresh intel data
+
+# Disabled by default — enable by uncommenting the schedule triggers below,
+# or trigger manually from the Actions tab (workflow_dispatch).
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Signal window (days)"
+        required: false
+        default: "30"
+      skip_parcels:
+        description: "Skip full parcel master pull"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+  # Uncomment these to auto-refresh:
+  # schedule:
+  #   - cron: '0 8 * * *'       # daily 08:00 UTC — recorder signals only (set SKIP_PARCELS)
+  #   - cron: '0 10 1 * *'      # monthly 10:00 UTC 1st of month — full refresh including parcels
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browser
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run refresh
+        env:
+          DAYS: ${{ github.event.inputs.days || '30' }}
+          SKIP_PARCELS: ${{ github.event.inputs.skip_parcels == 'true' && '1' || '0' }}
+        run: ./run.sh
+
+      - name: Commit updated data
+        run: |
+          git config user.name  "intel-bot"
+          git config user.email "[email protected]"
+          git add data/leads.json data/export_skiptrace.csv data/export_ghl.csv
+          git diff --cached --quiet || git commit -m "chore: refresh intel data [skip ci]"
+          git push

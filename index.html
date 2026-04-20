@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Maricopa + Pima Intel · Motivated Seller Lead Desk</title>
+<meta name="description" content="Operator dashboard for Maricopa and Pima County motivated seller signals" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/[email protected]/dist/leaflet.css" />
+<style>
+  :root {
+    --bg:           #0b1220;
+    --bg-panel:     #111a2e;
+    --bg-elev:      #17223c;
+    --border:       #223151;
+    --text:         #e6ecf5;
+    --text-dim:     #8a9bb8;
+    --text-muted:   #5a6b88;
+    --accent:       #d4a94a;     /* gold */
+    --accent-dim:   #a8842f;
+    --accent-soft:  #d4a94a22;
+    --navy:         #1e2d4d;
+    --pima:         #c97d3c;     /* desert copper */
+    --maricopa:     #3c8ec9;     /* sky/saguaro */
+    --danger:       #e26d5c;
+    --ok:           #7ab988;
+    --warn:         #e2b85c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text); font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size:13px; }
+  body { overflow:hidden; }
+  a { color:var(--accent); text-decoration:none; }
+  button, input, select { font:inherit; color:inherit; }
+
+  .app { display:grid; grid-template-rows: auto 1fr auto; height:100vh; }
+
+  /* ---------- Header ---------- */
+  header {
+    display:flex; align-items:center; gap:24px;
+    padding:14px 22px; border-bottom:1px solid var(--border);
+    background: linear-gradient(180deg, #0e1628, #0b1220);
+  }
+  .brand { display:flex; align-items:baseline; gap:10px; }
+  .brand h1 {
+    font-family:"Fraunces", serif; font-weight:700; font-size:22px; margin:0;
+    letter-spacing:-0.015em;
+  }
+  .brand h1 .dot { color:var(--accent); }
+  .brand .sub {
+    font-size:10.5px; color:var(--text-muted); text-transform:uppercase;
+    letter-spacing:0.18em;
+  }
+  .kpis { display:flex; gap:22px; margin-left:auto; }
+  .kpi { display:flex; flex-direction:column; gap:2px; text-align:right; }
+  .kpi .val { font-family:"Fraunces",serif; font-size:20px; font-weight:700; color:var(--accent); }
+  .kpi .lbl { font-size:9.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.14em; }
+
+  /* ---------- Main layout ---------- */
+  main { display:grid; grid-template-columns: 300px 1fr 380px; overflow:hidden; }
+
+  /* ---------- Sidebar filters ---------- */
+  aside.filters {
+    border-right:1px solid var(--border); padding:18px 16px;
+    overflow-y:auto; background:var(--bg-panel);
+  }
+  .filter-group { margin-bottom:22px; }
+  .filter-group h3 {
+    margin:0 0 10px; font-size:10px; color:var(--accent); letter-spacing:0.18em;
+    text-transform:uppercase; font-weight:700;
+    border-bottom:1px solid var(--border); padding-bottom:6px;
+  }
+  .chip-row { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip {
+    padding:6px 10px; border:1px solid var(--border); border-radius:4px;
+    cursor:pointer; user-select:none; font-size:11px;
+    background:var(--bg-elev); color:var(--text-dim);
+    transition: all .12s ease;
+  }
+  .chip:hover { border-color:var(--accent-dim); color:var(--text); }
+  .chip.active {
+    background:var(--accent-soft); border-color:var(--accent); color:var(--accent);
+  }
+  .chip.county-maricopa.active { background:#3c8ec922; border-color:var(--maricopa); color:var(--maricopa); }
+  .chip.county-pima.active    { background:#c97d3c22; border-color:var(--pima);     color:var(--pima); }
+
+  .slider-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:11px; color:var(--text-dim); }
+  .slider-row .val { color:var(--accent); font-weight:700; }
+  input[type="range"] { width:100%; accent-color:var(--accent); }
+
+  input[type="search"], select {
+    width:100%; background:var(--bg-elev); border:1px solid var(--border);
+    padding:8px 10px; border-radius:4px; color:var(--text);
+  }
+  input[type="search"]:focus, select:focus { outline:none; border-color:var(--accent); }
+
+  .btn {
+    padding:8px 12px; border:1px solid var(--border); background:var(--bg-elev);
+    color:var(--text); border-radius:4px; cursor:pointer; font-size:11px;
+    text-transform:uppercase; letter-spacing:0.1em;
+  }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn.primary { background:var(--accent); color:#0b1220; border-color:var(--accent); font-weight:700; }
+  .btn.primary:hover { background:var(--accent-dim); }
+  .btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+
+  /* ---------- Middle: table + map ---------- */
+  section.center { display:grid; grid-template-rows: 52% 48%; overflow:hidden; }
+  .table-wrap { overflow:auto; border-bottom:1px solid var(--border); }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  thead th {
+    position:sticky; top:0; background:var(--bg-panel); color:var(--accent);
+    font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
+    font-size:10px; text-align:left; padding:10px 12px; border-bottom:1px solid var(--border);
+    cursor:pointer; user-select:none;
+  }
+  thead th:hover { color:#fff; }
+  thead th .sort-arrow { opacity:0.45; margin-left:4px; }
+  thead th.sorted .sort-arrow { opacity:1; color:var(--accent); }
+  tbody tr {
+    border-bottom:1px solid #1a263f; cursor:pointer; transition:background .08s ease;
+  }
+  tbody tr:hover { background:var(--bg-elev); }
+  tbody tr.selected { background:var(--accent-soft); }
+  tbody td { padding:9px 12px; }
+  .county-pill {
+    display:inline-block; padding:2px 6px; border-radius:3px; font-size:9.5px;
+    letter-spacing:0.08em; text-transform:uppercase; font-weight:700;
+  }
+  .county-pill.Maricopa { background:#3c8ec922; color:var(--maricopa); }
+  .county-pill.Pima     { background:#c97d3c22; color:var(--pima); }
+  .score-bar {
+    display:inline-block; vertical-align:middle; width:60px; height:6px;
+    background:var(--bg-elev); border-radius:3px; overflow:hidden; margin-right:8px;
+  }
+  .score-bar span { display:block; height:100%; background:linear-gradient(90deg, var(--accent-dim), var(--accent)); }
+  .signal-tags { display:inline-flex; flex-wrap:wrap; gap:3px; }
+  .signal-tag {
+    font-size:9px; padding:1px 5px; background:var(--bg-elev); border:1px solid var(--border);
+    border-radius:3px; color:var(--text-dim); white-space:nowrap;
+  }
+  .signal-tag.stack { background:var(--accent); color:#0b1220; border-color:var(--accent); font-weight:700; }
+
+  #map { height:100%; background:#0e1628; }
+  /* Override leaflet defaults */
+  .leaflet-container { background:#0e1628; font-family:"JetBrains Mono", monospace; }
+  .leaflet-popup-content-wrapper { background:var(--bg-panel); color:var(--text); border-radius:4px; }
+  .leaflet-popup-tip { background:var(--bg-panel); }
+
+  /* ---------- Right: detail panel + calc ---------- */
+  aside.detail {
+    border-left:1px solid var(--border); background:var(--bg-panel);
+    overflow-y:auto; padding:16px;
+  }
+  .empty-detail {
+    color:var(--text-muted); font-size:11px; text-align:center; padding:40px 0;
+    border:1px dashed var(--border); border-radius:4px;
+  }
+  .detail h2 {
+    font-family:"Fraunces",serif; font-size:18px; margin:0 0 2px;
+    letter-spacing:-0.01em;
+  }
+  .detail .sub { color:var(--text-muted); font-size:11px; margin-bottom:14px; }
+  .detail .section { margin:14px 0 18px; }
+  .detail .section h4 {
+    margin:0 0 8px; font-size:9.5px; letter-spacing:0.2em; text-transform:uppercase;
+    color:var(--accent); border-bottom:1px solid var(--border); padding-bottom:5px;
+  }
+  .kv { display:grid; grid-template-columns: 1fr 1fr; gap:6px 12px; font-size:11px; }
+  .kv .k { color:var(--text-muted); }
+  .kv .v { color:var(--text); overflow:hidden; text-overflow:ellipsis; }
+
+  .sig-list { list-style:none; padding:0; margin:0; }
+  .sig-list li {
+    border:1px solid var(--border); border-radius:4px; padding:8px 10px;
+    margin-bottom:6px; font-size:11px; background:var(--bg-elev);
+  }
+  .sig-list li .st { color:var(--accent); font-weight:700; }
+  .sig-list li .dt { color:var(--text-muted); float:right; }
+
+  /* Calculator */
+  .calc-modes { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:10px; }
+  .calc-mode {
+    flex:1; min-width:70px; padding:5px 6px; text-align:center; border:1px solid var(--border);
+    border-radius:3px; cursor:pointer; font-size:9.5px; background:var(--bg-elev);
+    color:var(--text-dim); letter-spacing:0.05em;
+  }
+  .calc-mode.active { background:var(--accent); color:#0b1220; border-color:var(--accent); font-weight:700; }
+  .calc-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:11px; }
+  .calc-row label { color:var(--text-muted); }
+  .calc-row input { width:100px; text-align:right; background:var(--bg-elev); border:1px solid var(--border);
+                    color:var(--text); padding:4px 6px; border-radius:3px; font-family:"JetBrains Mono",monospace; }
+  .calc-row input:focus { outline:none; border-color:var(--accent); }
+  .calc-result {
+    margin-top:12px; padding:10px; background:var(--bg-elev); border:1px solid var(--accent);
+    border-radius:4px;
+  }
+  .calc-result .main {
+    font-family:"Fraunces",serif; font-size:22px; font-weight:700; color:var(--accent);
+  }
+  .calc-result .label { font-size:9.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.15em; }
+
+  /* ---------- Footer ---------- */
+  footer {
+    border-top:1px solid var(--border); padding:8px 22px; font-size:10px;
+    color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;
+    background:var(--bg-panel);
+  }
+
+  /* ---------- Loading state ---------- */
+  .loader {
+    position:absolute; inset:0; display:grid; place-items:center;
+    background:rgba(11,18,32,0.95); z-index:1000;
+  }
+  .loader .wave { color:var(--accent); font-family:"Fraunces",serif; font-size:28px; }
+  .loader .hint { margin-top:10px; color:var(--text-muted); font-size:11px; }
+  .loader.hidden { display:none; }
+
+  /* responsive ish */
+  @media (max-width: 1280px) {
+    main { grid-template-columns: 260px 1fr 340px; }
+  }
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
+    aside.filters, aside.detail { max-height:none; }
+    section.center { grid-template-rows: 400px 300px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="brand">
+      <h1>Maricopa <span class="dot">+</span> Pima Intel</h1>
+      <span class="sub">Motivated Seller Lead Desk</span>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="val" id="kpi-total">—</div><div class="lbl">Leads</div></div>
+      <div class="kpi"><div class="val" id="kpi-mar">—</div><div class="lbl">Maricopa</div></div>
+      <div class="kpi"><div class="val" id="kpi-pima">—</div><div class="lbl">Pima</div></div>
+      <div class="kpi"><div class="val" id="kpi-stacked">—</div><div class="lbl">Stacked 2+</div></div>
+      <div class="kpi"><div class="val" id="kpi-updated">—</div><div class="lbl">Updated</div></div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main>
+    <!-- Filters -->
+    <aside class="filters">
+      <div class="filter-group">
+        <h3>Search</h3>
+        <input type="search" id="f-search" placeholder="APN, owner, address…" />
+      </div>
+
+      <div class="filter-group">
+        <h3>County</h3>
+        <div class="chip-row" id="f-county">
+          <span class="chip county-maricopa active" data-val="Maricopa">Maricopa</span>
+          <span class="chip county-pima active"    data-val="Pima">Pima</span>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <h3>Signal Types</h3>
+        <div class="chip-row" id="f-signals"></div>
+      </div>
+
+      <div class="filter-group">
+        <h3>Flags</h3>
+        <div class="chip-row" id="f-flags">
+          <span class="chip" data-val="absentee">Absentee</span>
+          <span class="chip" data-val="out_of_state">Out of State</span>
+          <span class="chip" data-val="stacked">Stacked 2+</span>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <h3>Min Score</h3>
+        <div class="slider-row"><span>0</span><span class="val" id="f-score-val">0</span><span>200</span></div>
+        <input type="range" id="f-score" min="0" max="200" value="0" step="5" />
+      </div>
+
+      <div class="filter-group">
+        <h3>Min Equity ($)</h3>
+        <div class="slider-row"><span>0</span><span class="val" id="f-eq-val">0</span><span>500k</span></div>
+        <input type="range" id="f-equity" min="0" max="500000" value="0" step="10000" />
+      </div>
+
+      <div class="filter-group">
+        <h3>Export</h3>
+        <div class="btn-row">
+          <button class="btn primary" id="btn-skip">Skip Trace CSV</button>
+          <button class="btn primary" id="btn-ghl">GHL CSV</button>
+          <button class="btn" id="btn-json">JSON</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center: table + map -->
+    <section class="center">
+      <div class="table-wrap">
+        <table id="tbl">
+          <thead>
+            <tr>
+              <th data-sort="score">Score <span class="sort-arrow">▼</span></th>
+              <th data-sort="county">Co.</th>
+              <th data-sort="signal_count">Stack</th>
+              <th data-sort="signals">Signals</th>
+              <th data-sort="site_address">Property</th>
+              <th data-sort="owner">Owner</th>
+              <th data-sort="equity_est">Equity</th>
+              <th data-sort="year_built">Built</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div id="map"></div>
+    </section>
+
+    <!-- Detail + calculator -->
+    <aside class="detail" id="detail">
+      <div class="empty-detail">Select a lead to view details and run deal math</div>
+    </aside>
+  </main>
+
+  <!-- FOOTER -->
+  <footer>
+    <span id="foot-count">0 leads shown</span>
+    <span>Infinity Cash Offer · Built on public records · Data updates nightly when wired to GH Actions</span>
+  </footer>
+</div>
+
+<!-- LOADER -->
+<div class="loader" id="loader">
+  <div style="text-align:center">
+    <div class="wave">loading motivated sellers…</div>
+    <div class="hint">reading data/leads.json</div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/[email protected]/dist/leaflet.js"></script>
+<script>
+/* ============================================================
+   State
+   ============================================================ */
+const state = {
+  leads: [],
+  filtered: [],
+  selectedId: null,
+  filters: {
+    counties: new Set(["Maricopa","Pima"]),
+    signals:  new Set(),
+    flags:    new Set(),
+    minScore: 0,
+    minEquity: 0,
+    search: "",
+  },
+  sort: { key: "score", dir: -1 },
+  map: null,
+  markers: null,
+  calcMode: "wholesale",
+};
+
+const $  = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const fmt = n => n == null ? "—" : (typeof n === "number" ? n.toLocaleString() : String(n));
+const fmtM = n => !n ? "—" : "$" + Math.round(n).toLocaleString();
+
+/* ============================================================
+   Data loading
+   ============================================================ */
+async function loadData() {
+  try {
+    const res = await fetch("data/leads.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("leads.json not found");
+    const payload = await res.json();
+    state.leads = (payload.leads || []).map((l, i) => ({ ...l, _id: i }));
+    $("#kpi-updated").textContent = (payload.generated_at || "").slice(0,10) || "—";
+    buildSignalChips();
+    applyFilters();
+    initMap();
+    $("#loader").classList.add("hidden");
+  } catch (e) {
+    $("#loader").innerHTML = `
+      <div style="text-align:center; padding:30px">
+        <div class="wave" style="color:var(--danger)">no data yet</div>
+        <div class="hint">
+          expected <code>data/leads.json</code><br/>
+          run: <code>python pipeline/build_leads.py</code><br/><br/>
+          <span style="color:var(--text-muted)">${e.message}</span>
+        </div>
+      </div>`;
+  }
+}
+
+/* ============================================================
+   Filter chips: signals are discovered from the data
+   ============================================================ */
+function buildSignalChips() {
+  const types = new Set();
+  for (const l of state.leads) for (const s of (l.signals||[])) if (s.type) types.add(s.type);
+  const row = $("#f-signals");
+  row.innerHTML = "";
+  [...types].sort().forEach(t => {
+    const el = document.createElement("span");
+    el.className = "chip";
+    el.dataset.val = t;
+    el.textContent = t;
+    el.addEventListener("click", () => {
+      el.classList.toggle("active");
+      if (state.filters.signals.has(t)) state.filters.signals.delete(t);
+      else state.filters.signals.add(t);
+      applyFilters();
+    });
+    row.appendChild(el);
+  });
+}
+
+/* ============================================================
+   Filter bindings
+   ============================================================ */
+$$("#f-county .chip").forEach(el => {
+  el.addEventListener("click", () => {
+    el.classList.toggle("active");
+    const v = el.dataset.val;
+    if (state.filters.counties.has(v)) state.filters.counties.delete(v);
+    else state.filters.counties.add(v);
+    applyFilters();
+  });
+});
+$$("#f-flags .chip").forEach(el => {
+  el.addEventListener("click", () => {
+    el.classList.toggle("active");
+    const v = el.dataset.val;
+    if (state.filters.flags.has(v)) state.filters.flags.delete(v);
+    else state.filters.flags.add(v);
+    applyFilters();
+  });
+});
+$("#f-score").addEventListener("input", e => {
+  state.filters.minScore = +e.target.value;
+  $("#f-score-val").textContent = state.filters.minScore;
+  applyFilters();
+});
+$("#f-equity").addEventListener("input", e => {
+  state.filters.minEquity = +e.target.value;
+  $("#f-eq-val").textContent = state.filters.minEquity >= 1000 ? (state.filters.minEquity/1000)+"k" : state.filters.minEquity;
+  applyFilters();
+});
+$("#f-search").addEventListener("input", e => {
+  state.filters.search = e.target.value.toLowerCase().trim();
+  applyFilters();
+});
+
+/* ============================================================
+   Filtering + sorting
+   ============================================================ */
+function matches(lead) {
+  const f = state.filters;
+  if (!f.counties.has(lead.county)) return false;
+  if (f.signals.size > 0) {
+    const leadTypes = new Set((lead.signals||[]).map(s=>s.type));
+    let hit = false;
+    for (const t of f.signals) if (leadTypes.has(t)) { hit = true; break; }
+    if (!hit) return false;
+  }
+  if (f.flags.has("absentee")     && !lead.absentee)     return false;
+  if (f.flags.has("out_of_state") && !lead.out_of_state) return false;
+  if (f.flags.has("stacked")      && (lead.signal_count||0) < 2) return false;
+  if ((lead.score||0) < f.minScore) return false;
+  if ((lead.equity_est||0) < f.minEquity) return false;
+  if (f.search) {
+    const hay = [lead.apn, lead.owner, lead.site_address, lead.mail_address, lead.site_city]
+                .join(" ").toLowerCase();
+    if (!hay.includes(f.search)) return false;
+  }
+  return true;
+}
+
+function applyFilters() {
+  state.filtered = state.leads.filter(matches);
+  sortFiltered();
+  renderTable();
+  renderKPIs();
+  renderMap();
+}
+
+function sortFiltered() {
+  const { key, dir } = state.sort;
+  state.filtered.sort((a,b) => {
+    let av = a[key], bv = b[key];
+    if (key === "signals") { av = (a.signals||[]).length; bv = (b.signals||[]).length; }
+    if (av == null) av = "";
+    if (bv == null) bv = "";
+    if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
+    return ((+av||0) - (+bv||0)) * dir;
+  });
+}
+
+$$("#tbl thead th").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.sort;
+    if (!k) return;
+    if (state.sort.key === k) state.sort.dir = -state.sort.dir;
+    else { state.sort.key = k; state.sort.dir = -1; }
+    $$("#tbl thead th").forEach(x => x.classList.remove("sorted"));
+    th.classList.add("sorted");
+    th.querySelector(".sort-arrow").textContent = state.sort.dir === -1 ? "▼" : "▲";
+    sortFiltered();
+    renderTable();
+  });
+});
+
+/* ============================================================
+   Table render
+   ============================================================ */
+function renderTable() {
+  const body = $("#tbody");
+  const max = 500; // virtualized cap
+  const rows = state.filtered.slice(0, max);
+  body.innerHTML = rows.map(l => {
+    const sigTags = (l.signals||[]).slice(0,3).map(s =>
+      `<span class="signal-tag">${s.type||""}</span>`).join("");
+    const stackTag = (l.signal_count||0) >= 2
+      ? `<span class="signal-tag stack">×${l.signal_count}</span>` : "";
+    const pct = Math.min(100, Math.round((l.score||0)/200*100));
+    return `
+      <tr data-id="${l._id}" ${state.selectedId === l._id ? 'class="selected"' : ''}>
+        <td>
+          <span class="score-bar"><span style="width:${pct}%"></span></span>
+          <strong>${l.score||0}</strong>
+        </td>
+        <td><span class="county-pill ${l.county}">${l.county?.[0]||"?"}</span></td>
+        <td>${stackTag || '<span style="color:var(--text-muted)">1</span>'}</td>
+        <td><span class="signal-tags">${sigTags}</span></td>
+        <td>${l.site_address || '<em style="color:var(--text-muted)">no site address</em>'}<br/>
+            <span style="color:var(--text-muted);font-size:10px">${l.site_city||""} ${l.site_zip||""}</span></td>
+        <td>${(l.owner||"—").slice(0,28)}</td>
+        <td>${fmtM(l.equity_est)}</td>
+        <td>${l.year_built || "—"}</td>
+      </tr>`;
+  }).join("");
+  $("#foot-count").textContent = `${state.filtered.length.toLocaleString()} leads shown${state.filtered.length > max ? " (top 500 rendered)" : ""}`;
+
+  $$("#tbody tr").forEach(tr => {
+    tr.addEventListener("click", () => {
+      state.selectedId = +tr.dataset.id;
+      renderTable();
+      renderDetail();
+    });
+  });
+}
+
+/* ============================================================
+   KPIs
+   ============================================================ */
+function renderKPIs() {
+  const f = state.filtered;
+  $("#kpi-total").textContent = f.length.toLocaleString();
+  $("#kpi-mar").textContent   = f.filter(x => x.county === "Maricopa").length.toLocaleString();
+  $("#kpi-pima").textContent  = f.filter(x => x.county === "Pima").length.toLocaleString();
+  $("#kpi-stacked").textContent = f.filter(x => (x.signal_count||0) >= 2).length.toLocaleString();
+}
+
+/* ============================================================
+   Detail panel + calculator
+   ============================================================ */
+function renderDetail() {
+  const l = state.leads.find(x => x._id === state.selectedId);
+  const el = $("#detail");
+  if (!l) {
+    el.innerHTML = '<div class="empty-detail">Select a lead to view details and run deal math</div>';
+    return;
+  }
+  el.innerHTML = `
+    <h2>${l.site_address || "—"}</h2>
+    <div class="sub">${l.site_city || ""} ${l.site_zip || ""} · <span class="county-pill ${l.county}">${l.county}</span></div>
+
+    <div class="section">
+      <h4>Score ${l.score||0}</h4>
+      <div class="kv">
+        <span class="k">Signals</span><span class="v">+${l.score_parts?.signals||0}</span>
+        <span class="k">Flags</span><span class="v">+${l.score_parts?.flags||0}</span>
+        <span class="k">Stack bonus</span><span class="v">+${l.score_parts?.stack||0}</span>
+        <span class="k">Equity bonus</span><span class="v">+${l.score_parts?.equity||0}</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h4>Property</h4>
+      <div class="kv">
+        <span class="k">APN</span><span class="v">${l.apn||"—"}</span>
+        <span class="k">Use</span><span class="v">${l.use_desc||"—"}</span>
+        <span class="k">Year built</span><span class="v">${l.year_built||"—"}</span>
+        <span class="k">Living sqft</span><span class="v">${fmt(l.living_sqft)}</span>
+        <span class="k">Lot sqft</span><span class="v">${fmt(l.lot_sqft)}</span>
+        <span class="k">Beds / Baths</span><span class="v">${l.bedrooms||"—"} / ${l.bathrooms||"—"}</span>
+        <span class="k">FCV</span><span class="v">${fmtM(l.fcv)}</span>
+        <span class="k">Last sale</span><span class="v">${l.last_sale_date||"—"} · ${fmtM(l.last_sale_price)}</span>
+        <span class="k">Equity est.</span><span class="v" style="color:var(--ok)">${fmtM(l.equity_est)}</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h4>Owner</h4>
+      <div class="kv">
+        <span class="k">Name</span><span class="v">${l.owner||"—"}</span>
+        ${l.owner_2 ? `<span class="k">Co-owner</span><span class="v">${l.owner_2}</span>` : ""}
+        <span class="k">Mailing</span><span class="v">${l.mail_address||"—"}</span>
+        <span class="k">City/State</span><span class="v">${l.mail_city||""} ${l.mail_state||""} ${l.mail_zip||""}</span>
+        ${l.absentee ? '<span class="k">Flag</span><span class="v" style="color:var(--warn)">Absentee</span>' : ""}
+        ${l.out_of_state ? '<span class="k">Flag</span><span class="v" style="color:var(--warn)">Out of state</span>' : ""}
+      </div>
+    </div>
+
+    <div class="section">
+      <h4>Signals (${l.signal_count||0})</h4>
+      <ul class="sig-list">
+        ${(l.signals||[]).map(s => `
+          <li>
+            <span class="st">${s.type}</span>
+            <span class="dt">${s.date||""}</span>
+            ${s.doc_url ? `<br/><a href="${s.doc_url}" target="_blank" rel="noopener">view document →</a>` : ""}
+          </li>
+        `).join("")}
+      </ul>
+    </div>
+
+    <div class="section">
+      <h4>Deal Calculator</h4>
+      <div class="calc-modes">
+        <div class="calc-mode active" data-mode="wholesale">Wholesale</div>
+        <div class="calc-mode" data-mode="flip">Fix & Flip</div>
+        <div class="calc-mode" data-mode="brrrr">BRRRR</div>
+        <div class="calc-mode" data-mode="subto">Sub-To</div>
+        <div class="calc-mode" data-mode="novation">Novation</div>
+        <div class="calc-mode" data-mode="owner">Seller Finance</div>
+      </div>
+      <div id="calc-body"></div>
+    </div>
+  `;
+  renderCalc(l);
+
+  // focus map marker
+  if (window._latlon && window._latlon[l._id]) {
+    const { lat, lon } = window._latlon[l._id];
+    state.map.flyTo([lat, lon], 16, { duration: 0.5 });
+  }
+
+  $$(".calc-mode").forEach(m => m.addEventListener("click", () => {
+    state.calcMode = m.dataset.mode;
+    $$(".calc-mode").forEach(x => x.classList.remove("active"));
+    m.classList.add("active");
+    renderCalc(l);
+  }));
+}
+
+/* ============================================================
+   Six-mode calculator
+   ============================================================ */
+function renderCalc(l) {
+  const arv = l.fcv ? Math.round(l.fcv * 1.05) : 250000; // default ARV guess
+  const sqft = l.living_sqft || 1500;
+  const repairs = sqft * 25;    // default $25/sqft
+  const body = $("#calc-body");
+
+  const modes = {
+    wholesale: `
+      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
+      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
+      <div class="calc-row"><label>MAO %</label><input id="c-mao" value="0.70" /></div>
+      <div class="calc-row"><label>Assignment Fee</label><input id="c-fee" value="10000" /></div>
+    `,
+    flip: `
+      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
+      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
+      <div class="calc-row"><label>MAO %</label><input id="c-mao" value="0.75" /></div>
+      <div class="calc-row"><label>Holding (mo)</label><input id="c-hold" value="6" /></div>
+      <div class="calc-row"><label>Hold $/mo</label><input id="c-holdcost" value="2000" /></div>
+      <div class="calc-row"><label>Profit target</label><input id="c-profit" value="30000" /></div>
+    `,
+    brrrr: `
+      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
+      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
+      <div class="calc-row"><label>Refi LTV</label><input id="c-ltv" value="0.75" /></div>
+      <div class="calc-row"><label>Rent (mo)</label><input id="c-rent" value="${Math.round(sqft*1.2)}" /></div>
+    `,
+    subto: `
+      <div class="calc-row"><label>Existing balance</label><input id="c-bal" value="${Math.round((l.last_sale_price||arv*0.6))}" /></div>
+      <div class="calc-row"><label>Interest rate</label><input id="c-rate" value="0.045" /></div>
+      <div class="calc-row"><label>P&I (mo)</label><input id="c-pi" value="1500" /></div>
+      <div class="calc-row"><label>Seller cash</label><input id="c-sc" value="5000" /></div>
+      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
+    `,
+    novation: `
+      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
+      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
+      <div class="calc-row"><label>Agreed w/ seller</label><input id="c-agreed" value="${Math.round(arv*0.85)}" /></div>
+      <div class="calc-row"><label>Sale commission</label><input id="c-comm" value="0.06" /></div>
+    `,
+    owner: `
+      <div class="calc-row"><label>Purchase price</label><input id="c-pur" value="${Math.round(arv*0.9)}" /></div>
+      <div class="calc-row"><label>Down payment</label><input id="c-down" value="10000" /></div>
+      <div class="calc-row"><label>Interest rate</label><input id="c-rate" value="0.06" /></div>
+      <div class="calc-row"><label>Amort (yrs)</label><input id="c-yrs" value="30" /></div>
+    `,
+  };
+  body.innerHTML = modes[state.calcMode] + `
+    <div class="calc-result">
+      <div class="label" id="c-label">MAO</div>
+      <div class="main" id="c-value">—</div>
+      <div style="font-size:10px; color:var(--text-muted); margin-top:4px" id="c-detail"></div>
+    </div>
+  `;
+  const compute = () => {
+    const v = id => +(($("#"+id)?.value)||0);
+    const label = $("#c-label"), val = $("#c-value"), det = $("#c-detail");
+    switch (state.calcMode) {
+      case "wholesale": {
+        const mao = v("c-arv") * v("c-mao") - v("c-rep") - v("c-fee");
+        label.textContent = "MAX OFFER TO SELLER";
+        val.textContent = fmtM(mao);
+        det.textContent = `ARV×${v("c-mao")} – repairs – ${fmt(v("c-fee"))} fee`;
+        break;
+      }
+      case "flip": {
+        const mao = v("c-arv") * v("c-mao") - v("c-rep") - v("c-hold")*v("c-holdcost") - v("c-profit");
+        label.textContent = "MAX ACQUISITION";
+        val.textContent = fmtM(mao);
+        det.textContent = `Target profit ${fmtM(v("c-profit"))} after repairs + ${v("c-hold")} mo holding`;
+        break;
+      }
+      case "brrrr": {
+        const refi = v("c-arv") * v("c-ltv");
+        const allIn = v("c-arv") * 0.70 + v("c-rep"); // buy+repair target
+        const pulled = refi - allIn;
+        label.textContent = "CASH PULLED AT REFI";
+        val.textContent = fmtM(pulled);
+        det.textContent = `Refi ${fmtM(refi)} – all-in ${fmtM(allIn)} · rent ${fmtM(v("c-rent"))}/mo`;
+        break;
+      }
+      case "subto": {
+        const spread = v("c-arv") - v("c-bal") - v("c-sc");
+        label.textContent = "EQUITY SPREAD";
+        val.textContent = fmtM(spread);
+        det.textContent = `Take loan ${fmtM(v("c-bal"))} @ ${(v("c-rate")*100).toFixed(2)}% · P&I ${fmtM(v("c-pi"))}/mo · ${fmtM(v("c-sc"))} to seller`;
+        break;
+      }
+      case "novation": {
+        const net = v("c-arv") - v("c-agreed") - v("c-rep") - v("c-arv")*v("c-comm");
+        label.textContent = "NOVATION NET";
+        val.textContent = fmtM(net);
+        det.textContent = `List at ARV, pay seller ${fmtM(v("c-agreed"))}, absorb commission ${(v("c-comm")*100).toFixed(1)}%`;
+        break;
+      }
+      case "owner": {
+        const principal = v("c-pur") - v("c-down");
+        const r = v("c-rate")/12;
+        const n = v("c-yrs")*12;
+        const pmt = r ? principal * r / (1 - Math.pow(1+r, -n)) : principal/n;
+        label.textContent = "MONTHLY P&I TO SELLER";
+        val.textContent = fmtM(pmt);
+        det.textContent = `Financed ${fmtM(principal)} @ ${(v("c-rate")*100).toFixed(2)}% over ${v("c-yrs")} yrs`;
+        break;
+      }
+    }
+  };
+  body.addEventListener("input", compute);
+  compute();
+}
+
+/* ============================================================
+   Map
+   ============================================================ */
+function initMap() {
+  state.map = L.map("map", { zoomControl: true }).setView([33.45, -112.07], 9);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    subdomains: "abcd",
+    maxZoom: 19,
+    attribution: "© OSM © CARTO"
+  }).addTo(state.map);
+  state.markers = L.layerGroup().addTo(state.map);
+  renderMap();
+}
+
+function renderMap() {
+  if (!state.map) return;
+  state.markers.clearLayers();
+  window._latlon = {};
+  // Simple zip-centroid approximation for points without true lat/lon.
+  // (If you add geometry to the parcel scrape, swap this out for real coords.)
+  let bounds = [];
+  for (const l of state.filtered.slice(0, 500)) {
+    const ll = approximateLatLon(l);
+    if (!ll) continue;
+    window._latlon[l._id] = ll;
+    const color = l.county === "Maricopa" ? "#3c8ec9" : "#c97d3c";
+    const m = L.circleMarker([ll.lat, ll.lon], {
+      radius: 3 + Math.min(7, (l.score||0)/30),
+      color, fillColor: color, fillOpacity: 0.75, weight: 1,
+    }).bindPopup(`
+      <strong>${l.site_address||""}</strong><br/>
+      ${l.site_city||""} ${l.site_zip||""}<br/>
+      Score: <b>${l.score||0}</b> · ${l.signal_count||1} signal(s)
+    `);
+    m.on("click", () => { state.selectedId = l._id; renderTable(); renderDetail(); });
+    state.markers.addLayer(m);
+    bounds.push([ll.lat, ll.lon]);
+  }
+  if (bounds.length > 5) state.map.fitBounds(bounds, { padding: [20,20], maxZoom: 11 });
+}
+
+/* Rough zip -> lat/lon centroid bag — good enough for map clustering until you
+   add true geometry to the parcel scrape. Add more as needed. */
+const ZIP_CENTROIDS = {
+  // Phoenix metro
+  "85001":[33.4488,-112.0740],"85003":[33.4517,-112.0801],"85004":[33.4534,-112.0700],
+  "85006":[33.4668,-112.0509],"85007":[33.4517,-112.0890],"85008":[33.4625,-112.0317],
+  "85009":[33.4520,-112.0985],"85013":[33.5111,-112.0783],"85015":[33.5098,-112.0852],
+  "85016":[33.5138,-112.0422],"85017":[33.5152,-112.0957],"85018":[33.5006,-111.9998],
+  "85019":[33.5154,-112.1156],"85020":[33.5568,-112.0691],"85021":[33.5594,-112.0884],
+  "85022":[33.6127,-112.0494],"85023":[33.6324,-112.0886],"85024":[33.6760,-112.0651],
+  "85027":[33.6689,-112.0959],"85028":[33.5896,-112.0132],"85029":[33.5819,-112.1195],
+  "85032":[33.6170,-112.0283],"85033":[33.4786,-112.2182],"85037":[33.4810,-112.2579],
+  "85040":[33.3911,-112.0432],"85041":[33.3803,-112.0934],"85042":[33.3707,-112.0376],
+  "85043":[33.3958,-112.1762],"85044":[33.3403,-112.0368],"85045":[33.3063,-112.1050],
+  "85048":[33.3147,-112.0454],"85051":[33.5594,-112.1225],"85053":[33.6324,-112.1225],
+  "85054":[33.6552,-111.9517],"85083":[33.7376,-112.1495],"85085":[33.7517,-112.0776],
+  "85086":[33.8428,-112.1321],
+  // Scottsdale / Paradise Valley
+  "85250":[33.5244,-111.9014],"85251":[33.4920,-111.9273],"85253":[33.5292,-111.9605],
+  "85254":[33.6160,-111.9900],"85255":[33.6677,-111.8775],"85257":[33.4689,-111.9296],
+  "85258":[33.5641,-111.8987],"85259":[33.5819,-111.8353],"85260":[33.5965,-111.8784],
+  "85262":[33.7868,-111.8088],"85266":[33.7817,-111.8808],
+  // Mesa / Gilbert / Chandler / Tempe
+  "85201":[33.4346,-111.8368],"85202":[33.3963,-111.8752],"85203":[33.4480,-111.8075],
+  "85204":[33.4128,-111.7934],"85205":[33.4376,-111.7401],"85206":[33.4221,-111.7158],
+  "85207":[33.4546,-111.6540],"85208":[33.3926,-111.6908],"85209":[33.3859,-111.6440],
+  "85210":[33.3948,-111.8454],"85212":[33.3459,-111.6400],"85213":[33.4456,-111.7624],
+  "85215":[33.4869,-111.6737],"85233":[33.3531,-111.7974],"85234":[33.3686,-111.7512],
+  "85295":[33.3080,-111.7366],"85296":[33.3354,-111.7545],"85297":[33.2833,-111.7410],
+  "85298":[33.2493,-111.7405],"85224":[33.3169,-111.8715],"85225":[33.3113,-111.8278],
+  "85226":[33.3232,-111.9291],"85248":[33.2586,-111.8679],"85249":[33.2471,-111.8284],
+  "85281":[33.4237,-111.9298],"85282":[33.3956,-111.9313],"85283":[33.3715,-111.9311],
+  "85284":[33.3478,-111.9369],
+  // Glendale / Peoria / Surprise
+  "85301":[33.5386,-112.1859],"85302":[33.5676,-112.1766],"85303":[33.5392,-112.2069],
+  "85304":[33.5822,-112.1800],"85305":[33.5411,-112.2345],"85306":[33.6160,-112.1782],
+  "85308":[33.6506,-112.1834],"85310":[33.6712,-112.1450],"85345":[33.5852,-112.2500],
+  "85381":[33.5875,-112.2454],"85382":[33.6496,-112.2377],"85383":[33.7109,-112.2318],
+  "85392":[33.5280,-112.3169],"85395":[33.5188,-112.3681],"85374":[33.6336,-112.3676],
+  "85375":[33.6556,-112.3810],"85378":[33.6295,-112.3317],"85379":[33.6140,-112.3760],
+  "85387":[33.7005,-112.4230],"85388":[33.6510,-112.4308],
+  // Tucson metro (Pima)
+  "85701":[32.2217,-110.9683],"85704":[32.3236,-110.9746],"85705":[32.2766,-110.9791],
+  "85706":[32.1566,-110.9491],"85708":[32.1700,-110.8667],"85710":[32.2214,-110.8299],
+  "85711":[32.2141,-110.8924],"85712":[32.2548,-110.8898],"85713":[32.1894,-110.9657],
+  "85714":[32.1831,-110.9455],"85715":[32.2546,-110.8296],"85716":[32.2459,-110.9237],
+  "85718":[32.3080,-110.9168],"85719":[32.2439,-110.9422],"85730":[32.1949,-110.7878],
+  "85735":[32.1490,-111.1920],"85736":[31.9630,-111.3600],"85737":[32.4200,-110.9500],
+  "85739":[32.5075,-110.8855],"85741":[32.3247,-111.0244],"85742":[32.3551,-111.0547],
+  "85743":[32.3500,-111.1200],"85745":[32.2315,-111.0207],"85746":[32.1589,-111.0269],
+  "85747":[32.1437,-110.7711],"85748":[32.2103,-110.7780],"85749":[32.2600,-110.7500],
+  "85750":[32.2700,-110.8300],"85755":[32.4369,-110.9600],"85756":[32.0930,-110.8870],
+  "85757":[32.1568,-111.0984],"85629":[31.9598,-110.9750],"85614":[31.8900,-110.9800],
+  "85641":[32.0480,-110.6610],"85658":[32.4200,-111.0800],"85653":[32.4338,-111.2247],
+  "85735":[32.1490,-111.1920],
+};
+
+function approximateLatLon(lead) {
+  const z = (lead.site_zip || "").slice(0,5);
+  if (ZIP_CENTROIDS[z]) {
+    const [lat, lon] = ZIP_CENTROIDS[z];
+    // small jitter so markers in same zip don't stack
+    return { lat: lat + (Math.random()-0.5)*0.01, lon: lon + (Math.random()-0.5)*0.01 };
+  }
+  return null;
+}
+
+/* ============================================================
+   Export (client-side)
+   ============================================================ */
+function toCSV(rows, cols) {
+  const esc = v => {
+    if (v == null) return "";
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const head = cols.map(c => c.label).join(",");
+  const body = rows.map(r => cols.map(c => esc(c.get(r))).join(",")).join("\n");
+  return head + "\n" + body;
+}
+
+function download(filename, content) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function splitOwner(full) {
+  if (!full) return ["",""];
+  const s = full.trim();
+  if (/TRUST|LLC|INC|LTD/i.test(s)) return ["", s];
+  if (s.includes(",")) {
+    const [last, rest] = s.split(",");
+    const first = (rest||"").trim().split(/\s+/)[0]||"";
+    return [first, last.trim()];
+  }
+  const p = s.split(/\s+/);
+  if (p.length === 1) return ["", p[0]];
+  return [p.slice(0,-1).join(" "), p[p.length-1]];
+}
+
+$("#btn-skip").addEventListener("click", () => {
+  const cols = [
+    { label: "Owner First",      get: l => splitOwner(l.owner)[0] },
+    { label: "Owner Last",       get: l => splitOwner(l.owner)[1] },
+    { label: "Mailing Address",  get: l => l.mail_address || "" },
+    { label: "Mailing City",     get: l => l.mail_city || "" },
+    { label: "Mailing State",    get: l => l.mail_state || "" },
+    { label: "Mailing Zip",      get: l => l.mail_zip || "" },
+    { label: "Property Address", get: l => l.site_address || "" },
+    { label: "Property City",    get: l => l.site_city || "" },
+    { label: "Property State",   get: l => "AZ" },
+    { label: "Property Zip",     get: l => l.site_zip || "" },
+    { label: "APN",              get: l => l.apn || "" },
+    { label: "County",           get: l => l.county || "" },
+  ];
+  download("skiptrace.csv", toCSV(state.filtered, cols));
+});
+
+$("#btn-ghl").addEventListener("click", () => {
+  const cols = [
+    { label: "First Name",       get: l => splitOwner(l.owner)[0] },
+    { label: "Last Name",        get: l => splitOwner(l.owner)[1] },
+    { label: "Phone",            get: _ => "" },
+    { label: "Email",            get: _ => "" },
+    { label: "Address Line 1",   get: l => l.mail_address || l.site_address || "" },
+    { label: "City",             get: l => l.mail_city || l.site_city || "" },
+    { label: "State",            get: l => l.mail_state || "AZ" },
+    { label: "Postal Code",      get: l => l.mail_zip || l.site_zip || "" },
+    { label: "Source",           get: _ => "Maricopa/Pima Intel" },
+    { label: "Tags",             get: l => {
+      const t = [l.county, ...(l.signals||[]).map(s=>s.type)];
+      if (l.absentee) t.push("Absentee");
+      if (l.out_of_state) t.push("Out of State");
+      return t.filter(Boolean).join(", ");
+    }},
+    { label: "APN",              get: l => l.apn || "" },
+    { label: "County",           get: l => l.county || "" },
+    { label: "Signals",          get: l => (l.signals||[]).map(s=>s.type).join(" + ") },
+    { label: "Score",            get: l => l.score||0 },
+    { label: "Equity Est",       get: l => l.equity_est||0 },
+    { label: "Property Address", get: l => l.site_address || "" },
+    { label: "Property City",    get: l => l.site_city || "" },
+    { label: "Property Zip",     get: l => l.site_zip || "" },
+  ];
+  download("ghl.csv", toCSV(state.filtered, cols));
+});
+
+$("#btn-json").addEventListener("click", () => {
+  const json = JSON.stringify(state.filtered, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "leads-filtered.json";
+  document.body.appendChild(a); a.click(); a.remove();
+});
+
+/* ============================================================
+   Go
+   ============================================================ */
+loadData();
+</script>
+</body>
+</html>

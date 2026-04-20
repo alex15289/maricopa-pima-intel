@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Secrets / local config
+.env
+.env.local
+*.key
+
+# Scraper artifacts — bulky and regenerable
+# Keep leads.json since the dashboard reads it; exclude the raw intermediates.
+data/*.jsonl
+data/*.csv
+data/_debug/
+!data/leads.json
+
+# Playwright
+test-results/
+playwright-report/

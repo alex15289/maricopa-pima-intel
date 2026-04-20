@@ -1,0 +1,189 @@
+{
+  "generated_at": "2026-04-20T00:00:00Z",
+  "counties": ["Maricopa", "Pima"],
+  "total_leads": 12,
+  "_note": "SAMPLE DATA — replace by running pipeline/build_leads.py after scraping",
+  "leads": [
+    {
+      "county": "Maricopa", "apn": "301-45-112", "apn_norm": "30145112",
+      "owner": "MARTINEZ FAMILY TRUST", "owner_2": null,
+      "site_address": "4829 N 19TH AVE", "site_city": "PHOENIX", "site_zip": "85015",
+      "mail_address": "PO BOX 4421", "mail_city": "PRESCOTT", "mail_state": "AZ", "mail_zip": "86302",
+      "use_desc": "SFR", "year_built": 1962, "living_sqft": 1340, "lot_sqft": 6800,
+      "bedrooms": 3, "bathrooms": 2, "fcv": 285000, "lpv": 240000,
+      "last_sale_date": "2001-08-14", "last_sale_price": 78000,
+      "absentee": true, "out_of_state": false,
+      "signal_count": 3,
+      "signals": [
+        {"type":"Notice of Trustee Sale","doc_code":"NTS","date":"03/12/2026","doc_url":null,"grantor":"MARTINEZ FAMILY TRUST","grantee":"TIFFANY & BOSCO TRUSTEE"},
+        {"type":"Affidavit of Death","doc_code":"AFDT","date":"11/08/2025","doc_url":null,"grantor":"MARTINEZ ROBERTO (DECEASED)","grantee":null},
+        {"type":"Mechanics Lien","doc_code":"MEL","date":"09/22/2025","doc_url":null,"grantor":null,"grantee":"ABC PLUMBING LLC"}
+      ],
+      "score": 168, "score_parts": {"signals": 110, "flags": 18, "stack": 25, "equity": 15},
+      "equity_est": 207000
+    },
+    {
+      "county": "Maricopa", "apn": "125-67-089A", "apn_norm": "12567089A",
+      "owner": "JOHNSON ESTATE OF MILDRED",
+      "site_address": "1402 E THOMAS RD", "site_city": "PHOENIX", "site_zip": "85014",
+      "mail_address": "1402 E THOMAS RD", "mail_city": "PHOENIX", "mail_state": "AZ", "mail_zip": "85014",
+      "use_desc": "SFR", "year_built": 1954, "living_sqft": 1180, "lot_sqft": 7200,
+      "bedrooms": 2, "bathrooms": 1, "fcv": 340000, "lpv": 280000,
+      "last_sale_date": "1985-06-03", "last_sale_price": 45000,
+      "absentee": false, "out_of_state": false,
+      "signal_count": 2,
+      "signals": [
+        {"type":"Affidavit of Death","doc_code":"AFDT","date":"02/28/2026","grantor":"JOHNSON MILDRED","grantee":null},
+        {"type":"Probate Case","doc_code":"PB","date":"03/02/2026","grantor":null,"grantee":null}
+      ],
+      "score": 145, "score_parts": {"signals": 95, "flags": 8, "stack": 10, "equity": 30},
+      "equity_est": 295000
+    },
+    {
+      "county": "Pima", "apn": "115-28-0410", "apn_norm": "115280410",
+      "owner": "RODRIGUEZ CARLOS & MARIA",
+      "site_address": "2847 E MOUNTAIN VIEW DR", "site_city": "TUCSON", "site_zip": "85716",
+      "mail_address": "8429 OAK HARBOR BLVD", "mail_city": "LOS ANGELES", "mail_state": "CA", "mail_zip": "90024",
+      "use_desc": "SFR", "year_built": 1978, "living_sqft": 1680, "lot_sqft": 8400,
+      "bedrooms": 3, "bathrooms": 2, "fcv": 310000, "lpv": 265000,
+      "last_sale_date": "2014-11-20", "last_sale_price": 165000,
+      "absentee": true, "out_of_state": true,
+      "signal_count": 2,
+      "signals": [
+        {"type":"Notice of Trustee Sale","doc_code":"NTS","date":"04/01/2026","grantor":"RODRIGUEZ CARLOS","grantee":"US BANK"},
+        {"type":"Lis Pendens","doc_code":"LP","date":"01/18/2026","grantor":null,"grantee":null}
+      ],
+      "score": 138, "score_parts": {"signals": 90, "flags": 25, "stack": 10, "equity": 15},
+      "equity_est": 145000
+    },
+    {
+      "county": "Pima", "apn": "133-09-0217",
+      "owner": "WILLIAMS JAMES R", "apn_norm": "133090217",
+      "site_address": "6102 E SPEEDWAY BLVD", "site_city": "TUCSON", "site_zip": "85712",
+      "mail_address": "6102 E SPEEDWAY BLVD", "mail_city": "TUCSON", "mail_state": "AZ", "mail_zip": "85712",
+      "use_desc": "SFR", "year_built": 1968, "living_sqft": 1450, "lot_sqft": 7800,
+      "bedrooms": 3, "bathrooms": 1, "fcv": 265000, "lpv": 220000,
+      "last_sale_date": "1998-04-17", "last_sale_price": 62000,
+      "absentee": false, "out_of_state": false,
+      "signal_count": 2,
+      "signals": [
+        {"type":"Federal Tax Lien","doc_code":"FTL","date":"02/14/2026","grantor":"WILLIAMS JAMES R","grantee":"IRS"},
+        {"type":"Code Violation","doc_code":"CV","date":"03/08/2026","grantor":null,"grantee":"CITY OF TUCSON"}
+      ],
+      "score": 113, "score_parts": {"signals": 70, "flags": 8, "stack": 10, "equity": 15},
+      "equity_est": 203000
+    },
+    {
+      "county": "Maricopa", "apn": "214-33-008", "apn_norm": "21433008",
+      "owner": "NGUYEN THI",
+      "site_address": "12045 W BELL RD", "site_city": "SURPRISE", "site_zip": "85374",
+      "mail_address": "PO BOX 8812", "mail_city": "SEATTLE", "mail_state": "WA", "mail_zip": "98101",
+      "use_desc": "SFR", "year_built": 2004, "living_sqft": 2100, "lot_sqft": 7500,
+      "bedrooms": 4, "bathrooms": 2.5, "fcv": 425000, "lpv": 360000,
+      "last_sale_date": "2007-02-28", "last_sale_price": 310000,
+      "absentee": true, "out_of_state": true,
+      "signal_count": 1,
+      "signals": [{"type":"Notice of Trustee Sale","doc_code":"NTS","date":"03/28/2026","grantor":"NGUYEN THI","grantee":"QUALITY LOAN SVC"}],
+      "score": 105, "score_parts": {"signals": 55, "flags": 33, "stack": 0, "equity": 15},
+      "equity_est": 115000
+    },
+    {
+      "county": "Pima", "apn": "117-14-1180", "apn_norm": "117141180",
+      "owner": "ANDERSON ROBERT L",
+      "site_address": "5521 N CAMINO ESPLENDORA", "site_city": "TUCSON", "site_zip": "85718",
+      "mail_address": "5521 N CAMINO ESPLENDORA", "mail_city": "TUCSON", "mail_state": "AZ", "mail_zip": "85718",
+      "use_desc": "SFR", "year_built": 1972, "living_sqft": 2850, "lot_sqft": 15200,
+      "bedrooms": 4, "bathrooms": 3, "fcv": 680000, "lpv": 520000,
+      "last_sale_date": "1989-07-22", "last_sale_price": 148000,
+      "absentee": false, "out_of_state": false,
+      "signal_count": 1,
+      "signals": [{"type":"Affidavit of Death","doc_code":"AFDT","date":"03/15/2026","grantor":"ANDERSON SUSAN (DECEASED)","grantee":null}],
+      "score": 93, "score_parts": {"signals": 50, "flags": 8, "stack": 0, "equity": 30},
+      "equity_est": 532000
+    },
+    {
+      "county": "Maricopa", "apn": "402-19-556", "apn_norm": "40219556",
+      "owner": "SMITH LIVING TRUST",
+      "site_address": "9821 E ALTADENA AVE", "site_city": "SCOTTSDALE", "site_zip": "85260",
+      "mail_address": "4509 E CACTUS WREN", "mail_city": "PARADISE VALLEY", "mail_state": "AZ", "mail_zip": "85253",
+      "use_desc": "SFR", "year_built": 1988, "living_sqft": 2450, "lot_sqft": 9800,
+      "bedrooms": 4, "bathrooms": 3, "fcv": 720000, "lpv": 590000,
+      "last_sale_date": "1995-09-14", "last_sale_price": 225000,
+      "absentee": true, "out_of_state": false,
+      "signal_count": 1,
+      "signals": [{"type":"Lis Pendens","doc_code":"LP","date":"02/22/2026","grantor":"SMITH LIVING TRUST","grantee":"SUPERIOR COURT"}],
+      "score": 88, "score_parts": {"signals": 35, "flags": 18, "stack": 0, "equity": 30},
+      "equity_est": 495000
+    },
+    {
+      "county": "Maricopa", "apn": "179-84-221", "apn_norm": "17984221",
+      "owner": "ESTATE OF GONZALEZ MARIA",
+      "site_address": "3317 W ROSEWOOD LN", "site_city": "PHOENIX", "site_zip": "85017",
+      "mail_address": "3317 W ROSEWOOD LN", "mail_city": "PHOENIX", "mail_state": "AZ", "mail_zip": "85017",
+      "use_desc": "SFR", "year_built": 1958, "living_sqft": 1100, "lot_sqft": 6500,
+      "bedrooms": 3, "bathrooms": 1, "fcv": 225000, "lpv": 185000,
+      "last_sale_date": "1972-03-08", "last_sale_price": 18000,
+      "absentee": false, "out_of_state": false,
+      "signal_count": 1,
+      "signals": [{"type":"Probate Case","doc_code":"PB","date":"02/05/2026","grantor":null,"grantee":null}],
+      "score": 83, "score_parts": {"signals": 45, "flags": 8, "stack": 0, "equity": 30},
+      "equity_est": 207000
+    },
+    {
+      "county": "Pima", "apn": "202-51-0043", "apn_norm": "202510043",
+      "owner": "CHEN FAMILY HOLDINGS LLC",
+      "site_address": "1244 S PARK AVE", "site_city": "TUCSON", "site_zip": "85719",
+      "mail_address": "8821 WILSHIRE BLVD STE 400", "mail_city": "BEVERLY HILLS", "mail_state": "CA", "mail_zip": "90211",
+      "use_desc": "MULTIFAMILY 4UNIT", "year_built": 1965, "living_sqft": 3200, "lot_sqft": 8500,
+      "bedrooms": 8, "bathrooms": 4, "fcv": 480000, "lpv": 390000,
+      "last_sale_date": "2003-12-10", "last_sale_price": 185000,
+      "absentee": true, "out_of_state": true,
+      "signal_count": 1,
+      "signals": [{"type":"Code Violation","doc_code":"CV","date":"03/25/2026","grantor":null,"grantee":"CITY OF TUCSON"}],
+      "score": 78, "score_parts": {"signals": 20, "flags": 33, "stack": 0, "equity": 25},
+      "equity_est": 295000
+    },
+    {
+      "county": "Maricopa", "apn": "308-77-015", "apn_norm": "30877015",
+      "owner": "KOWALSKI THOMAS",
+      "site_address": "4421 E UNIVERSITY DR", "site_city": "MESA", "site_zip": "85205",
+      "mail_address": "4421 E UNIVERSITY DR", "mail_city": "MESA", "mail_state": "AZ", "mail_zip": "85205",
+      "use_desc": "SFR", "year_built": 1975, "living_sqft": 1520, "lot_sqft": 7100,
+      "bedrooms": 3, "bathrooms": 2, "fcv": 295000, "lpv": 245000,
+      "last_sale_date": "2010-06-15", "last_sale_price": 168000,
+      "absentee": false, "out_of_state": false,
+      "signal_count": 1,
+      "signals": [{"type":"State Tax Lien","doc_code":"STL","date":"01/29/2026","grantor":"KOWALSKI THOMAS","grantee":"AZ DEPT OF REVENUE"}],
+      "score": 65, "score_parts": {"signals": 25, "flags": 0, "stack": 0, "equity": 15},
+      "equity_est": 127000
+    },
+    {
+      "county": "Pima", "apn": "140-92-3381", "apn_norm": "140923381",
+      "owner": "PATEL SURESH & RITA",
+      "site_address": "10223 N LA CANADA DR", "site_city": "ORO VALLEY", "site_zip": "85737",
+      "mail_address": "6820 RAINTREE CT", "mail_city": "PLANO", "mail_state": "TX", "mail_zip": "75023",
+      "use_desc": "SFR", "year_built": 2001, "living_sqft": 2650, "lot_sqft": 9200,
+      "bedrooms": 4, "bathrooms": 3, "fcv": 540000, "lpv": 445000,
+      "last_sale_date": "2018-08-30", "last_sale_price": 385000,
+      "absentee": true, "out_of_state": true,
+      "signal_count": 1,
+      "signals": [{"type":"HOA Lien","doc_code":"HOA","date":"02/18/2026","grantor":"PATEL SURESH","grantee":"CANADA HILLS HOA"}],
+      "score": 58, "score_parts": {"signals": 15, "flags": 25, "stack": 0, "equity": 15},
+      "equity_est": 155000
+    },
+    {
+      "county": "Maricopa", "apn": "155-03-442", "apn_norm": "15503442",
+      "owner": "BROWN JANE (DECEASED)",
+      "site_address": null, "site_city": "PHOENIX", "site_zip": "85009",
+      "mail_address": "ATTN: BROWN HEIRS", "mail_city": "PHOENIX", "mail_state": "AZ", "mail_zip": "85009",
+      "use_desc": "VACANT LAND", "year_built": null, "living_sqft": null, "lot_sqft": 10400,
+      "bedrooms": null, "bathrooms": null, "fcv": 85000, "lpv": 72000,
+      "last_sale_date": "1968-11-05", "last_sale_price": 2200,
+      "absentee": false, "out_of_state": false,
+      "signal_count": 1,
+      "signals": [{"type":"Affidavit of Death","doc_code":"AFDT","date":"03/20/2026","grantor":"BROWN JANE (DECEASED)","grantee":null}],
+      "score": 40, "score_parts": {"signals": 50, "flags": -20, "stack": 0, "equity": 10},
+      "equity_est": 82800
+    }
+  ]
+}
