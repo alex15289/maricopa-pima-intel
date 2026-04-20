@@ -8,7 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/[email protected]/dist/leaflet.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   :root {
     --bg:           #0b1220;
@@ -382,8 +383,8 @@ async function loadData() {
     $("#kpi-updated").textContent = (payload.generated_at || "").slice(0,10) || "—";
     buildSignalChips();
     applyFilters();
-    initMap();
     $("#loader").classList.add("hidden");
+    try { initMap(); } catch (e) { console.warn("map init failed:", e); }
   } catch (e) {
     $("#loader").innerHTML = `
       <div style="text-align:center; padding:30px">
@@ -788,7 +789,7 @@ function initMap() {
 }
 
 function renderMap() {
-  if (!state.map) return;
+  if (!state.map || typeof L === "undefined") return;
   state.markers.clearLayers();
   window._latlon = {};
   // Simple zip-centroid approximation for points without true lat/lon.
