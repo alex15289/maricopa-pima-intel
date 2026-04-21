@@ -59,6 +59,12 @@ WEIGHTS = {
     "Code Violation":          20,
     "Probate Case":            45,
 
+    # Owner-name flags
+    "flag_estate_owner":       40,
+    "flag_cash_buyer":         -5,
+    "flag_trust_only":         15,
+    "flag_likely_vacant":      30,
+
     # Property flags (static — added once per lead regardless of signals)
     "flag_absentee":           10,
     "flag_out_of_state":       15,
@@ -130,6 +136,40 @@ def resolve_parcel(signal: dict, by_apn: dict, by_owner: dict) -> Optional[dict]
     return None
 
 
+
+
+# Owner-name pattern detection
+ESTATE_RE      = re.compile(r"\b(ESTATE\s+OF|EST\s+OF|HEIRS\s+OF|EST\.)\b|\bEST\b\s+OF|DECEASED|\(DEC\)")
+ENTITY_RE      = re.compile(r"\b(LLC|L\.L\.C\.|INC|INCORPORATED|LTD|LIMITED|L\.P\.|LP|HOLDINGS|INVESTMENTS|PROPERTIES|GROUP|PARTNERS|PARTNERSHIP|CORP|CORPORATION)\b")
+TRUST_RE       = re.compile(r"\bTRUST\b|\bTR\b|\bTRS\b|\bTRUSTEE\b|FAMILY\s+TR\b")
+BANK_TRUST_RE  = re.compile(r"BANK|TITLE|FARGO|CHASE|CITI|TRUSTEE\s+FOR|CAPITAL")
+
+def is_estate_owner(owner):
+    return bool(owner and ESTATE_RE.search(owner.upper()))
+
+def is_entity_owner(owner):
+    return bool(owner and ENTITY_RE.search(owner.upper()))
+
+def is_trust_owner(owner):
+    if not owner: return False
+    up = owner.upper()
+    if BANK_TRUST_RE.search(up): return False
+    return bool(TRUST_RE.search(up)) and not is_entity_owner(owner)
+
+def is_likely_vacant(parcel, now):
+    if not parcel.get("out_of_state"): return False
+    if not long_hold(parcel, now): return False
+    try: yb = int(parcel.get("year_built") or 0)
+    except: yb = 0
+    return yb > 0 and (now.year - yb) >= 30
+
+def parse_money(raw):
+    if raw is None: return 0.0
+    if isinstance(raw, (int, float)): return float(raw)
+    s = str(raw).strip().replace(",", "").replace("$", "").replace(" ", "")
+    try: return float(s) if s else 0.0
+    except: return 0.0
+
 def parse_record_date(s: Optional[str]) -> Optional[datetime]:
     if not s:
         return None
@@ -154,11 +194,8 @@ def signal_score(signal: dict, now: datetime) -> int:
 
 
 def equity_estimate(parcel: dict) -> float:
-    try:
-        fcv = float(parcel.get("fcv") or 0)
-        last = float(parcel.get("last_sale_price") or 0)
-    except (TypeError, ValueError):
-        return 0.0
+    fcv  = parse_money(parcel.get("fcv"))
+    last = parse_money(parcel.get("last_sale_price"))
     return max(0.0, fcv - last)
 
 
@@ -210,6 +247,15 @@ def build_leads(signals: list, parcels_by_county: dict) -> list:
         if not parcel.get("site_address"):
             flag_score += WEIGHTS["flag_no_site_address"]
 
+        estate_flag       = is_estate_owner(parcel.get("owner"))
+        entity_flag       = is_entity_owner(parcel.get("owner"))
+        trust_flag        = is_trust_owner(parcel.get("owner"))
+        likely_vacant_flag = is_likely_vacant(parcel, now)
+        if estate_flag:        flag_score += WEIGHTS["flag_estate_owner"]
+        if entity_flag:        flag_score += WEIGHTS["flag_cash_buyer"]
+        if trust_flag:         flag_score += WEIGHTS["flag_trust_only"]
+        if likely_vacant_flag: flag_score += WEIGHTS["flag_likely_vacant"]
+
         stack_bonus = 0
         n = len(sigs)
         if n == 2:    stack_bonus = WEIGHTS["stack_2_signals"]
@@ -251,6 +297,11 @@ def build_leads(signals: list, parcels_by_county: dict) -> list:
             "last_sale_price":parcel.get("last_sale_price"),
             "absentee":       parcel.get("absentee"),
             "out_of_state":   parcel.get("out_of_state"),
+            "estate_owner":   estate_flag,
+            "cash_buyer":     entity_flag,
+            "family_trust":   trust_flag,
+            "likely_vacant":  likely_vacant_flag,
+            "long_hold":      long_hold(parcel, now),
             # Signals (stacked)
             "signal_count":   n,
             "signals":        [
