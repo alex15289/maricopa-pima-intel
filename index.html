@@ -164,9 +164,20 @@
   .btn.primary:hover { background:var(--accent-dim); }
   .btn-row { display:flex; gap:8px; flex-wrap:wrap; }
 
-  /* ---------- Middle: table + map ---------- */
-  section.center { display:grid; grid-template-rows: 52% 48%; overflow:hidden; }
+  /* ---------- Middle: table + map (table-dominant) ---------- */
+  section.center { display:grid; grid-template-rows: 1fr 34px; overflow:hidden; transition: grid-template-rows .25s ease; }
+  section.center.map-open { grid-template-rows: 1fr 320px; }
   .table-wrap { overflow:auto; border-bottom:1px solid var(--border); }
+  .map-bar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:6px 12px; background:var(--bg-panel); border-top:1px solid var(--border);
+    font-size:10.5px; color:var(--text-muted); letter-spacing:0.12em; text-transform:uppercase;
+    cursor:pointer; user-select:none;
+  }
+  .map-bar:hover { color:var(--accent); }
+  .map-bar .map-toggle-icon { font-size:13px; transition:transform .25s ease; }
+  section.center.map-open .map-bar .map-toggle-icon { transform:rotate(180deg); }
+  .map-pane { overflow:hidden; position:relative; }
   table { width:100%; border-collapse:collapse; font-size:12px; }
   thead th {
     position:sticky; top:0; background:var(--bg-panel); color:var(--accent);
@@ -273,6 +284,72 @@
     background:rgba(11,18,32,0.95); z-index:1000;
   }
   .loader .wave { color:var(--accent); font-family:"Fraunces",serif; font-size:28px; }
+
+  /* ---------- Help icon (top-right, persistent) ---------- */
+  .help-btn {
+    position:fixed; top:72px; right:18px; z-index:9000;
+    width:36px; height:36px; border-radius:50%;
+    background:var(--bg-panel); border:1px solid var(--accent);
+    color:var(--accent); font-family:"Fraunces",serif; font-size:18px; font-weight:700;
+    cursor:pointer; display:grid; place-items:center;
+    transition: all .15s ease; box-shadow: 0 4px 14px rgba(0,0,0,.35);
+  }
+  .help-btn:hover { background:var(--accent); color:#0b1220; transform: scale(1.08); }
+
+  /* ---------- Welcome / help modal ---------- */
+  .modal-backdrop {
+    position:fixed; inset:0; background:rgba(0,0,0,.72); z-index:9500;
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; pointer-events:none; transition:opacity .2s ease;
+  }
+  .modal-backdrop.visible { opacity:1; pointer-events:auto; }
+  .modal {
+    background:linear-gradient(180deg, #111d33, #0b1220);
+    border:1px solid var(--accent-dim); border-radius:8px;
+    width:520px; max-width:92vw; max-height:82vh; overflow-y:auto;
+    padding:26px 32px; box-shadow:0 22px 60px rgba(0,0,0,.6);
+  }
+  .modal h2 {
+    font-family:"Fraunces",serif; font-size:22px; color:var(--accent); margin:0 0 6px;
+  }
+  .modal .sub { font-size:11.5px; color:var(--text-muted); letter-spacing:.14em;
+                text-transform:uppercase; margin-bottom:18px; }
+  .modal h3 {
+    font-size:11px; color:var(--accent); letter-spacing:.14em; text-transform:uppercase;
+    margin:18px 0 6px; font-weight:700;
+  }
+  .modal p, .modal li { font-size:13px; line-height:1.55; color:var(--text); margin:6px 0; }
+  .modal ul { padding-left:18px; margin:4px 0 10px; }
+  .modal .tier-chip {
+    display:inline-block; padding:2px 7px; border-radius:10px; font-size:10.5px;
+    font-weight:700; letter-spacing:.08em; font-family:"JetBrains Mono",monospace;
+    border:1px solid; margin-right:4px;
+  }
+  .modal .tier-chip.hot    { background:rgba(239,68,68,.12);  border-color:rgba(239,68,68,.55); color:#f87171; }
+  .modal .tier-chip.strong { background:rgba(212,175,55,.12); border-color:rgba(212,175,55,.55); color:#d4af37; }
+  .modal .tier-chip.likely { background:rgba(234,179,8,.08);  border-color:rgba(234,179,8,.45); color:#eab308; }
+  .modal .tier-chip.watch  { background:rgba(148,163,184,.08); border-color:rgba(148,163,184,.35); color:#94a3b8; }
+  .modal .actions { display:flex; gap:10px; margin-top:22px; justify-content:flex-end; }
+  .modal .btn-x {
+    padding:9px 18px; border:1px solid var(--accent); background:var(--accent); color:#0b1220;
+    border-radius:4px; cursor:pointer; font-size:11px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.12em;
+  }
+  .modal .btn-x.secondary { background:transparent; color:var(--text-muted); border-color:var(--border); }
+  .modal .btn-x:hover { opacity:.85; }
+
+  /* ---------- Playbook-hint banner on active filter ---------- */
+  .hint-banner {
+    padding:10px 18px; background:var(--accent-soft); border-bottom:1px solid var(--accent-dim);
+    font-size:12px; color:var(--text); display:none; align-items:center; gap:10px;
+  }
+  .hint-banner.visible { display:flex; }
+  .hint-banner .emoji { font-size:16px; }
+  .hint-banner .dismiss {
+    margin-left:auto; cursor:pointer; font-size:18px; color:var(--text-muted);
+    background:none; border:none; padding:0 4px;
+  }
+  .hint-banner .dismiss:hover { color:var(--text); }
   .loader .hint { margin-top:10px; color:var(--text-muted); font-size:11px; }
   .loader.hidden { display:none; }
 
@@ -375,6 +452,49 @@
 </style>
 </head>
 <body>
+
+<!-- Persistent help button -->
+<button class="help-btn" id="help-btn" title="Show welcome tour">?</button>
+
+<!-- Welcome modal (shown first visit) -->
+<div class="modal-backdrop" id="welcome-modal">
+  <div class="modal">
+    <h2>Welcome to your Lead Desk</h2>
+    <div class="sub">Motivated seller intelligence — Maricopa &amp; Pima County</div>
+
+    <h3>What the tiers mean</h3>
+    <p>
+      <span class="tier-chip hot">🔥 HOT</span> Call today — multiple distress signals stacked<br>
+      <span class="tier-chip strong">💎 STRONG</span> Call this week — strong single signal<br>
+      <span class="tier-chip likely">⚡ LIKELY</span> Add to drip — flags suggest motivation<br>
+      <span class="tier-chip watch">👀 WATCH</span> Keep in your database for later
+    </p>
+
+    <h3>How to work it</h3>
+    <ul>
+      <li><b>Click any lead row</b> to open full details, deal math, and comp tools on the right.</li>
+      <li><b>Filter the list</b> using the Signal Types and Core Flags on the left sidebar.</li>
+      <li><b>Switch counties</b> with the tabs above the table.</li>
+      <li><b>Export a CSV</b> for your dialer or mail campaign anytime using the button in the top bar.</li>
+    </ul>
+
+    <h3>Where the data comes from</h3>
+    <p>Public records: Maricopa County Assessor + Recorder, Pima County Assessor. Refreshes weekly. No MLS, no paid feeds.</p>
+
+    <div class="actions">
+      <button class="btn-x secondary" id="modal-skip">Skip for now</button>
+      <button class="btn-x" id="modal-got-it">Got it, let's go</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hint banner (appears on first filter interaction) -->
+<div class="hint-banner" id="hint-banner">
+  <span class="emoji">💡</span>
+  <span id="hint-text">Tip: click any lead row to see full property details, equity math, and a call-script angle on the right panel.</span>
+  <button class="dismiss" id="hint-dismiss" title="Dismiss">×</button>
+</div>
+
 <div class="app">
 
   <!-- HEADER -->
@@ -527,7 +647,7 @@
     </aside>
 
     <!-- Center: table + map -->
-    <section class="center">
+    <section class="center" id="center-section">
       <div class="table-wrap">
         <table id="tbl">
           <thead>
@@ -545,7 +665,11 @@
           <tbody id="tbody"></tbody>
         </table>
       </div>
-      <div id="map"></div>
+      <div class="map-bar" id="map-toggle">
+        <span>🗺  Map View <span id="map-count" style="margin-left:8px; color:var(--text-muted); letter-spacing:0; text-transform:none;"></span></span>
+        <span class="map-toggle-icon">▲</span>
+      </div>
+      <div class="map-pane"><div id="map" style="width:100%; height:100%;"></div></div>
     </section>
 
     <!-- Detail + calculator -->
@@ -754,6 +878,108 @@ function leadFlagReasons(lead) {
 /* ============================================================
    Data loading
    ============================================================ */
+// ============================================================================
+// UI POLISH — collapsible map, welcome modal, help button, filter hints
+// ============================================================================
+function initUiPolish() {
+  const centerSec = document.getElementById("center-section");
+  const mapToggle = document.getElementById("map-toggle");
+  const modal     = document.getElementById("welcome-modal");
+  const helpBtn   = document.getElementById("help-btn");
+  const hint      = document.getElementById("hint-banner");
+
+  // --- collapsible map ---
+  if (mapToggle && centerSec) {
+    mapToggle.addEventListener("click", () => {
+      centerSec.classList.toggle("map-open");
+      setTimeout(() => {
+        try { state.map && state.map.invalidateSize(); } catch(_) {}
+      }, 260);
+    });
+  }
+
+  // --- welcome modal: show on first visit only ---
+  const SEEN_KEY = "mpi_welcomed_v1";
+  function showModal() { if (modal) modal.classList.add("visible"); }
+  function hideModal() {
+    if (modal) modal.classList.remove("visible");
+    try { localStorage.setItem(SEEN_KEY, "1"); } catch(_) {}
+  }
+  try {
+    if (!localStorage.getItem(SEEN_KEY)) setTimeout(showModal, 400);
+  } catch(_) { setTimeout(showModal, 400); }
+
+  document.getElementById("modal-got-it")?.addEventListener("click", hideModal);
+  document.getElementById("modal-skip")?.addEventListener("click", hideModal);
+  modal?.addEventListener("click", (e) => { if (e.target === modal) hideModal(); });
+
+  // --- help button: re-open modal anytime ---
+  helpBtn?.addEventListener("click", showModal);
+
+  // --- first filter click shows a contextual hint banner ---
+  const HINT_SEEN = "mpi_hint_v1";
+  const hintText    = document.getElementById("hint-text");
+  const hintDismiss = document.getElementById("hint-dismiss");
+  function showHint(text) {
+    if (!hint || !hintText) return;
+    try { if (localStorage.getItem(HINT_SEEN)) return; } catch(_) {}
+    hintText.textContent = text;
+    hint.classList.add("visible");
+  }
+  function hideHint() {
+    hint?.classList.remove("visible");
+    try { localStorage.setItem(HINT_SEEN, "1"); } catch(_) {}
+  }
+  hintDismiss?.addEventListener("click", hideHint);
+
+  const attachHint = () => {
+    document.querySelectorAll(".chip").forEach(c => {
+      if (c.dataset.hintBound) return;
+      c.dataset.hintBound = "1";
+      c.addEventListener("click", () => {
+        const label = (c.textContent || "").trim();
+        let msg = "Tip: click any lead row to see full property details, equity math, and distress signals on the right panel.";
+        if (/trustee sale|foreclosure/i.test(label))
+          msg = "🔥 These owners face auction in ~90 days. Pitch: buy before it hits credit — fast cash close.";
+        else if (/estate|affidavit of death/i.test(label))
+          msg = "👑 Inherited properties. Pitch: we buy as-is so heirs settle the estate without repairs or showings.";
+        else if (/tax lien|tax del/i.test(label))
+          msg = "💰 Owner is behind on taxes. Pitch: cash offer covers the lien and gives them walk-away money.";
+        else if (/absentee/i.test(label))
+          msg = "🏢 Out-of-area owner. Pitch: done with the headache? We close in 14 days, no showings.";
+        else if (/high equity|long hold/i.test(label))
+          msg = "💎 Deep equity. Pitch: tap it without listing — offer a clean all-cash close.";
+        showHint(msg);
+      });
+    });
+  };
+  setTimeout(attachHint, 600);
+  const origBuild = window.buildSignalChips;
+  if (typeof origBuild === "function") {
+    window.buildSignalChips = function() {
+      const r = origBuild.apply(this, arguments);
+      setTimeout(attachHint, 50);
+      return r;
+    };
+  }
+
+  // --- show pinned-count next to map toggle label ---
+  const mapCountEl = document.getElementById("map-count");
+  if (mapCountEl) {
+    const origRender = window.renderTable;
+    if (typeof origRender === "function") {
+      window.renderTable = function() {
+        const r = origRender.apply(this, arguments);
+        try {
+          const n = (state.filtered || []).length;
+          mapCountEl.textContent = `(${n.toLocaleString()} pinned)`;
+        } catch(_) {}
+        return r;
+      };
+    }
+  }
+}
+
 async function loadData() {
   try {
     const res = await fetch("data/leads.json?v=" + Date.now(), { cache: "no-store" });
@@ -767,6 +993,7 @@ async function loadData() {
     applyFilters();
     $("#loader").classList.add("hidden");     // hide loader FIRST so UI shows even if map fails
     try { initMap(); } catch (e) { console.warn("map init failed:", e); }
+    initUiPolish();  // map toggle, welcome modal, help button, hints
   } catch (e) {
     $("#loader").innerHTML = `
       <div style="text-align:center; padding:30px">
