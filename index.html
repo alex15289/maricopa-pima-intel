@@ -1,1396 +1,1431 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bexar County Property Intelligence</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Maricopa + Pima Intel · Motivated Seller Lead Desk</title>
+<meta name="description" content="Operator dashboard for Maricopa and Pima County motivated seller signals" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#fff;--bg2:#f8f7f4;--bg3:#f0eeea;
-  --text:#1a1a18;--text2:#6b6a64;--text3:#9b9a94;
-  --border:rgba(0,0,0,.09);--border2:rgba(0,0,0,.16);
-  --accent:#1a5fa8;--danger:#b91c1c;--warn:#b45309;--success:#166534;
-  --r:8px;--rl:12px;
-}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;color:var(--text);background:var(--bg2);height:100vh;overflow:hidden}
-input,select,button{font-family:inherit;font-size:13px;color:var(--text)}
-.app{display:flex;flex-direction:column;height:100vh}
+  :root {
+    --bg:           #0b1220;
+    --bg-panel:     #111a2e;
+    --bg-elev:      #17223c;
+    --border:       #223151;
+    --text:         #e6ecf5;
+    --text-dim:     #8a9bb8;
+    --text-muted:   #5a6b88;
+    --accent:       #d4a94a;     /* gold */
+    --accent-dim:   #a8842f;
+    --accent-soft:  #d4a94a22;
+    --navy:         #1e2d4d;
+    --pima:         #c97d3c;     /* desert copper */
+    --maricopa:     #3c8ec9;     /* sky/saguaro */
+    --danger:       #e26d5c;
+    --ok:           #7ab988;
+    --warn:         #e2b85c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text); font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size:13px; }
+  body { overflow:hidden; }
+  a { color:var(--accent); text-decoration:none; }
+  button, input, select { font:inherit; color:inherit; }
 
-/* TOP BAR */
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:44px;background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0;gap:8px;flex-wrap:wrap}
-.logo{font-size:14px;font-weight:700;letter-spacing:-.01em}
-.dot{width:7px;height:7px;border-radius:50%;background:#16a34a;animation:p 2s infinite}
-@keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
-.pills{display:flex;gap:5px;flex-wrap:wrap}
-.pill{font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:20px;color:var(--text2);background:var(--bg2)}
-.pill b{color:var(--text)}
-.pill.hot b{color:var(--danger)}
-.btn{height:27px;padding:0 10px;border:1px solid var(--border2);border-radius:var(--r);background:var(--bg);cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
-.btn:hover{background:var(--bg2)}
-.btn.p{background:var(--text);color:var(--bg);border-color:var(--text)}
-.btn.p:hover{opacity:.85}
-.btn.success{background:#dcfce7;color:#14532d;border-color:#86efac}
-.sel{height:27px;padding:0 6px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);cursor:pointer;font-size:12px}
+  .app { display:grid; grid-template-rows: auto 1fr auto; height:100vh; }
 
-/* NOTIFY */
-.notify{padding:6px 16px;font-size:12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid;flex-shrink:0;gap:8px}
-.notify.hidden{display:none}
-.notify.info{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
-.notify.warn{background:#fffbeb;color:#92400e;border-color:#fcd34d}
-.notify.success{background:#f0fdf4;color:#166534;border-color:#86efac}
-.notify button{background:none;border:none;cursor:pointer;font-size:16px;line-height:1;color:inherit}
+  /* ---------- Header ---------- */
+  header {
+    display:flex; align-items:center; gap:24px;
+    padding:14px 22px; border-bottom:1px solid var(--border);
+    background: linear-gradient(180deg, #0e1628, #0b1220);
+  }
+  .brand { display:flex; align-items:baseline; gap:10px; }
+  .brand h1 {
+    font-family:"Fraunces", serif; font-weight:700; font-size:22px; margin:0;
+    letter-spacing:-0.015em;
+  }
+  .brand h1 .dot { color:var(--accent); }
+  .brand .sub {
+    font-size:10.5px; color:var(--text-muted); text-transform:uppercase;
+    letter-spacing:0.18em;
+  }
+  .kpis { display:flex; gap:22px; margin-left:auto; }
+  .kpi { display:flex; flex-direction:column; gap:2px; text-align:right; }
+  .kpi .val { font-family:"Fraunces",serif; font-size:20px; font-weight:700; color:var(--accent); }
+  .kpi .lbl { font-size:9.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.14em; }
 
-/* LAYOUT */
-.body{display:flex;flex:1;min-height:0;overflow:hidden}
-.sb{width:208px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;background:var(--bg)}
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+  /* ---------- Main layout ---------- */
+  main { display:grid; grid-template-columns: 300px 1fr 380px; overflow:hidden; }
 
-/* SIDEBAR */
-.sb-sec{border-bottom:1px solid var(--border)}
-.sb-h{padding:8px 12px 5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);display:flex;justify-content:space-between;cursor:pointer;user-select:none}
-.sb-h:hover{color:var(--text)}
-.sb-b{padding:2px 0 8px}
-.row{display:flex;align-items:center;gap:6px;padding:4px 12px;cursor:pointer;color:var(--text2);font-size:12px}
-.row:hover{background:var(--bg2);color:var(--text)}
-.row input[type=checkbox]{width:12px;height:12px;cursor:pointer;accent-color:var(--accent);flex-shrink:0}
-.row label{cursor:pointer;flex:1;font-size:12px}
-.cdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.cnt{font-size:10px;color:var(--text3);background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:1px 5px;margin-left:auto;flex-shrink:0}
-.pair{display:flex;gap:4px;margin:4px 12px}
-.pair input{flex:1;height:26px;padding:0 6px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);font-size:11px}
-.pair input:focus{outline:none;border-color:var(--accent)}
-.rng{padding:5px 12px 8px}
-.rng input[type=range]{width:100%;accent-color:var(--accent)}
-.rng-lbl{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:2px}
-.up-zone{margin:6px 12px 4px;border:1.5px dashed var(--border2);border-radius:var(--r);padding:12px 8px;text-align:center;cursor:pointer;color:var(--text2);font-size:12px;line-height:1.6}
-.up-zone:hover{border-color:var(--accent);color:var(--accent)}
-.src-status{margin:8px 12px;padding:8px 10px;border-radius:var(--r);border:1px solid var(--border);font-size:11px;background:var(--bg2)}
-.src-status .src-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
-.src-status .src-row:last-child{margin-bottom:0}
-.live-tag{font-size:9px;padding:1px 5px;border-radius:8px;background:#dcfce7;color:#14532d;font-weight:700}
-.upload-tag{font-size:9px;padding:1px 5px;border-radius:8px;background:#dbeafe;color:#1e40af;font-weight:700}
-.link-tag{font-size:9px;padding:1px 5px;border-radius:8px;background:#fef9c3;color:#854d0e;font-weight:700}
+  /* ---------- Sidebar filters ---------- */
+  aside.filters {
+    border-right:1px solid var(--border); padding:18px 16px;
+    overflow-y:auto; background:var(--bg-panel);
+  }
+  .filter-group { margin-bottom:22px; }
+  .filter-group h3 {
+    margin:0 0 10px; font-size:10px; color:var(--accent); letter-spacing:0.18em;
+    text-transform:uppercase; font-weight:700;
+    border-bottom:1px solid var(--border); padding-bottom:6px;
+  }
+  .chip-row { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip {
+    padding:6px 10px; border:1px solid var(--border); border-radius:4px;
+    cursor:pointer; user-select:none; font-size:11px;
+    background:var(--bg-elev); color:var(--text-dim);
+    transition: all .12s ease;
+  }
+  .chip:hover { border-color:var(--accent-dim); color:var(--text); }
+  .chip.active {
+    background:var(--accent-soft); border-color:var(--accent); color:var(--accent);
+  }
+  .chip.county-maricopa.active { background:#3c8ec922; border-color:var(--maricopa); color:var(--maricopa); }
+  .chip.county-pima.active    { background:#c97d3c22; border-color:var(--pima);     color:var(--pima); }
 
-/* TABS */
-.tabs{display:flex;border-bottom:1px solid var(--border);background:var(--bg2);overflow-x:auto;flex-shrink:0}
-.tab{padding:8px 13px;font-size:12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);white-space:nowrap;user-select:none;flex-shrink:0}
-.tab.active{color:var(--text);border-bottom-color:var(--accent);font-weight:700}
-.tab:hover:not(.active){color:var(--text)}
-.view{display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0}
-.view.active{display:flex}
+  .slider-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:11px; color:var(--text-dim); }
+  .slider-row .val { color:var(--accent); font-weight:700; }
+  input[type="range"] { width:100%; accent-color:var(--accent); }
 
-/* CONTROLS */
-.ctrl{display:flex;align-items:center;gap:6px;padding:7px 12px;border-bottom:1px solid var(--border);flex-wrap:wrap;flex-shrink:0;background:var(--bg)}
-.srch{flex:1;min-width:130px;position:relative}
-.srch input{width:100%;height:28px;padding:0 8px 0 28px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);font-size:12px}
-.srch input:focus{outline:none;border-color:var(--accent)}
-.si{position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none;font-size:14px}
+  input[type="search"], select {
+    width:100%; background:var(--bg-elev); border:1px solid var(--border);
+    padding:8px 10px; border-radius:4px; color:var(--text);
+  }
+  input[type="search"]:focus, select:focus { outline:none; border-color:var(--accent); }
 
-/* STATS */
-.stats{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg);flex-wrap:wrap}
-.sc{flex:1;min-width:80px;padding:7px 12px;border-right:1px solid var(--border)}
-.sc:last-child{border-right:none}
-.sl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text2)}
-.sv{font-size:18px;font-weight:700;margin-top:1px;line-height:1}
-.ss{font-size:10px;color:var(--text2);margin-top:1px}
-.red{color:var(--danger)}.amb{color:var(--warn)}.grn{color:var(--success)}.blu{color:var(--accent)}
+  .btn {
+    padding:8px 12px; border:1px solid var(--border); background:var(--bg-elev);
+    color:var(--text); border-radius:4px; cursor:pointer; font-size:11px;
+    text-transform:uppercase; letter-spacing:0.1em;
+  }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn.primary { background:var(--accent); color:#0b1220; border-color:var(--accent); font-weight:700; }
+  .btn.primary:hover { background:var(--accent-dim); }
+  .btn-row { display:flex; gap:8px; flex-wrap:wrap; }
 
-/* SOURCE BANNER */
-.src-banner{padding:5px 12px;font-size:11px;border-bottom:1px solid;flex-shrink:0;display:flex;align-items:center;gap:6px}
-.src-banner.live{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
-.src-banner.upload{background:#eff6ff;color:#1e40af;border-color:#bfdbfe}
-.src-banner.warn{background:#fffbeb;color:#92400e;border-color:#fcd34d}
-.src-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.src-banner.live .src-dot{background:#22c55e;animation:p 2s infinite}
-.src-banner.upload .src-dot{background:#3b82f6}
-.src-banner.warn .src-dot{background:#f59e0b}
+  /* ---------- Middle: table + map ---------- */
+  section.center { display:grid; grid-template-rows: 52% 48%; overflow:hidden; }
+  .table-wrap { overflow:auto; border-bottom:1px solid var(--border); }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  thead th {
+    position:sticky; top:0; background:var(--bg-panel); color:var(--accent);
+    font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
+    font-size:10px; text-align:left; padding:10px 12px; border-bottom:1px solid var(--border);
+    cursor:pointer; user-select:none;
+  }
+  thead th:hover { color:#fff; }
+  thead th .sort-arrow { opacity:0.45; margin-left:4px; }
+  thead th.sorted .sort-arrow { opacity:1; color:var(--accent); }
+  tbody tr {
+    border-bottom:1px solid #1a263f; cursor:pointer; transition:background .08s ease;
+  }
+  tbody tr:hover { background:var(--bg-elev); }
+  tbody tr.selected { background:var(--accent-soft); }
+  tbody td { padding:9px 12px; }
+  .county-pill {
+    display:inline-block; padding:2px 6px; border-radius:3px; font-size:9.5px;
+    letter-spacing:0.08em; text-transform:uppercase; font-weight:700;
+  }
+  .county-pill.Maricopa { background:#3c8ec922; color:var(--maricopa); }
+  .county-pill.Pima     { background:#c97d3c22; color:var(--pima); }
+  .score-bar {
+    display:inline-block; vertical-align:middle; width:60px; height:6px;
+    background:var(--bg-elev); border-radius:3px; overflow:hidden; margin-right:8px;
+  }
+  .score-bar span { display:block; height:100%; background:linear-gradient(90deg, var(--accent-dim), var(--accent)); }
+  .signal-tags { display:inline-flex; flex-wrap:wrap; gap:3px; }
+  .signal-tag {
+    font-size:9px; padding:1px 5px; background:var(--bg-elev); border:1px solid var(--border);
+    border-radius:3px; color:var(--text-dim); white-space:nowrap;
+  }
+  .signal-tag.stack { background:var(--accent); color:#0b1220; border-color:var(--accent); font-weight:700; }
 
-/* TABLE */
-.tbl{flex:1;overflow-y:auto;min-height:0}
-table{width:100%;border-collapse:collapse;table-layout:fixed}
-thead th{position:sticky;top:0;z-index:2;background:var(--bg2);padding:6px 8px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-thead th:hover{color:var(--text)}
-tbody tr{border-bottom:1px solid var(--border);cursor:pointer}
-tbody tr:hover{background:var(--bg2)}
-tbody tr.hot{background:rgba(185,28,28,.04)}
-td{padding:6px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;vertical-align:middle}
-.empty{padding:40px;text-align:center;color:var(--text2)}
+  #map { height:100%; background:#0e1628; }
+  /* Override leaflet defaults */
+  .leaflet-container { background:#0e1628; font-family:"JetBrains Mono", monospace; }
+  .leaflet-popup-content-wrapper { background:var(--bg-panel); color:var(--text); border-radius:4px; }
+  .leaflet-popup-tip { background:var(--bg-panel); }
 
-/* BADGES */
-.badge{display:inline-flex;align-items:center;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap}
-.b-r{background:#fee2e2;color:#7f1d1d}
-.b-a{background:#fef3c7;color:#78350f}
-.b-b{background:#dbeafe;color:#1e3a8a}
-.b-g{background:#dcfce7;color:#14532d}
-.b-p{background:#ede9fe;color:#3730a3}
-.b-t{background:#ccfbf1;color:#134e4a}
-.b-gr{background:#f3f4f6;color:#374151}
-.b-new{background:#dcfce7;color:#14532d;font-size:9px;padding:1px 4px}
+  /* ---------- Right: detail panel + calc ---------- */
+  aside.detail {
+    border-left:1px solid var(--border); background:var(--bg-panel);
+    overflow-y:auto; padding:16px;
+  }
+  .empty-detail {
+    color:var(--text-muted); font-size:11px; text-align:center; padding:40px 0;
+    border:1px dashed var(--border); border-radius:4px;
+  }
+  .detail h2 {
+    font-family:"Fraunces",serif; font-size:18px; margin:0 0 2px;
+    letter-spacing:-0.01em;
+  }
+  .detail .sub { color:var(--text-muted); font-size:11px; margin-bottom:14px; }
+  .detail .section { margin:14px 0 18px; }
+  .detail .section h4 {
+    margin:0 0 8px; font-size:9.5px; letter-spacing:0.2em; text-transform:uppercase;
+    color:var(--accent); border-bottom:1px solid var(--border); padding-bottom:5px;
+  }
+  .kv { display:grid; grid-template-columns: 1fr 1fr; gap:6px 12px; font-size:11px; }
+  .kv .k { color:var(--text-muted); }
+  .kv .v { color:var(--text); overflow:hidden; text-overflow:ellipsis; }
 
-/* SCORE BAR */
-.sw{display:flex;align-items:center;gap:4px}
-.sb2{width:38px;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
-.sf{height:100%;border-radius:2px}
-.hot-f{background:#dc2626}.warm-f{background:#d97706}.cool-f{background:#16a34a}
+  .sig-list { list-style:none; padding:0; margin:0; }
+  .sig-list li {
+    border:1px solid var(--border); border-radius:4px; padding:8px 10px;
+    margin-bottom:6px; font-size:11px; background:var(--bg-elev);
+  }
+  .sig-list li .st { color:var(--accent); font-weight:700; }
+  .sig-list li .dt { color:var(--text-muted); float:right; }
 
-/* MS FLAGS ROW */
-.flags{display:flex;flex-wrap:wrap;gap:2px}
-.flag-dot{width:7px;height:7px;border-radius:50%}
+  /* Calculator */
+  .calc-modes { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:10px; }
+  .calc-mode {
+    flex:1; min-width:70px; padding:5px 6px; text-align:center; border:1px solid var(--border);
+    border-radius:3px; cursor:pointer; font-size:9.5px; background:var(--bg-elev);
+    color:var(--text-dim); letter-spacing:0.05em;
+  }
+  .calc-mode.active { background:var(--accent); color:#0b1220; border-color:var(--accent); font-weight:700; }
+  .calc-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:11px; }
+  .calc-row label { color:var(--text-muted); }
+  .calc-row input { width:100px; text-align:right; background:var(--bg-elev); border:1px solid var(--border);
+                    color:var(--text); padding:4px 6px; border-radius:3px; font-family:"JetBrains Mono",monospace; }
+  .calc-row input:focus { outline:none; border-color:var(--accent); }
+  .calc-result {
+    margin-top:12px; padding:10px; background:var(--bg-elev); border:1px solid var(--accent);
+    border-radius:4px;
+  }
+  .calc-result .main {
+    font-family:"Fraunces",serif; font-size:22px; font-weight:700; color:var(--accent);
+  }
+  .calc-result .label { font-size:9.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.15em; }
 
-/* PAGER */
-.pager{display:flex;align-items:center;gap:8px;padding:5px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text2);flex-shrink:0;background:var(--bg)}
-.pager button{height:24px;padding:0 8px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:11px;cursor:pointer}
-.pager button:disabled{opacity:.3;cursor:default}
-.pager button:not(:disabled):hover{background:var(--bg2)}
+  /* ---------- Footer ---------- */
+  footer {
+    border-top:1px solid var(--border); padding:8px 22px; font-size:10px;
+    color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;
+    background:var(--bg-panel);
+  }
 
-/* DETAIL PANEL */
-.dp{width:268px;flex-shrink:0;border-left:1px solid var(--border);overflow-y:auto;display:none;flex-direction:column;background:var(--bg)}
-.dp.open{display:flex}
-.dp-h{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-.dp-h h3{font-size:13px;font-weight:700}
-.dp-x{background:none;border:none;cursor:pointer;color:var(--text2);font-size:18px;line-height:1}
-.dp-s{padding:10px 12px;border-bottom:1px solid var(--border)}
-.dp-s h4{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:7px}
-.dp-r{display:flex;justify-content:space-between;gap:6px;margin-bottom:5px;font-size:12px}
-.dp-r .k{color:var(--text2);flex-shrink:0}
-.dp-r .v{font-weight:600;text-align:right;word-break:break-word;max-width:155px}
-.dp-acts{padding:10px 12px;display:flex;flex-direction:column;gap:5px}
-.dp-btn{width:100%;height:30px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;color:var(--text)}
-.dp-btn:hover{background:var(--bg2)}
-.dp-btn.prim{background:var(--text);color:var(--bg);border-color:var(--text)}
-.dp-btn.prim:hover{opacity:.85}
-.dp-btn.accent{background:#eff6ff;color:#1e40af;border-color:#bfdbfe}
-.dp-btn.accent:hover{background:#dbeafe}
-.sig-list{display:flex;flex-direction:column;gap:4px;margin-top:4px}
-.sig{display:flex;align-items:center;gap:7px;font-size:11px;padding:5px 8px;border-radius:var(--r);background:var(--bg2)}
-.sig-d{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+  /* ---------- Loading state ---------- */
+  .loader {
+    position:absolute; inset:0; display:grid; place-items:center;
+    background:rgba(11,18,32,0.95); z-index:1000;
+  }
+  .loader .wave { color:var(--accent); font-family:"Fraunces",serif; font-size:28px; }
+  .loader .hint { margin-top:10px; color:var(--text-muted); font-size:11px; }
+  .loader.hidden { display:none; }
 
-/* STACK */
-.stk-wrap{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
-.stk-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--rl);padding:12px 14px;cursor:pointer}
-.stk-card:hover{border-color:var(--border2)}
-.stk-card.ultra{border-left:3px solid var(--danger)}
-.stk-card.high{border-left:3px solid var(--warn)}
-.stk-card.med{border-left:3px solid var(--success)}
-.stk-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:7px}
-.stk-badges{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:7px}
-.stk-ft{display:flex;justify-content:space-between;font-size:11px;color:var(--text2)}
-.stk-score{font-size:22px;font-weight:700;line-height:1;flex-shrink:0}
+  /* ---------- Tax roll uploader modal ---------- */
+  .modal-overlay {
+    position:fixed; inset:0; background:rgba(8,12,22,0.85); z-index:5000;
+    display:none; align-items:center; justify-content:center; padding:40px;
+  }
+  .modal-overlay.open { display:flex; }
+  .modal {
+    background:var(--bg-panel); border:1px solid var(--accent); border-radius:6px;
+    max-width:900px; width:100%; max-height:90vh; overflow-y:auto;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+  }
+  .modal-head {
+    padding:18px 22px; border-bottom:1px solid var(--border);
+    display:flex; justify-content:space-between; align-items:center;
+    background:linear-gradient(180deg, #0e1628, var(--bg-panel));
+  }
+  .modal-head h2 {
+    font-family:"Fraunces", serif; font-size:20px; margin:0;
+  }
+  .modal-head .close {
+    cursor:pointer; color:var(--text-muted); font-size:20px; background:none; border:none;
+  }
+  .modal-head .close:hover { color:var(--text); }
+  .modal-body { padding:22px; }
 
-/* DEAL ANALYZER */
-.deal-wrap{flex:1;overflow-y:auto;padding:14px}
-.deal-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:14px}
-.deal-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--rl);padding:12px}
-.deal-card h4{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:10px}
-.dr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.dr label{font-size:12px;color:var(--text2)}
-.dr input,.dr select{width:110px;height:26px;padding:0 6px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);font-size:12px;text-align:right}
-.dr input:focus,.dr select:focus{outline:none;border-color:var(--accent)}
-.verdict{padding:10px 14px;border-radius:var(--r);font-size:13px;font-weight:700;margin-bottom:12px}
-.verdict.go{background:#dcfce7;color:#14532d}
-.verdict.caution{background:#fef9c3;color:#854d0e}
-.verdict.stop{background:#fee2e2;color:#7f1d1d}
-.bdt{width:100%;font-size:12px;border-collapse:collapse;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
-.bdt td{padding:5px 8px;border-bottom:1px solid var(--border)}
-.bdt tr:last-child td{border-bottom:none;font-weight:700}
+  .dropzone {
+    border:2px dashed var(--border); border-radius:6px; padding:40px;
+    text-align:center; cursor:pointer; transition:all 0.15s ease;
+    background:var(--bg-elev);
+  }
+  .dropzone:hover, .dropzone.dragging {
+    border-color:var(--accent); background:var(--accent-soft);
+  }
+  .dropzone .big { font-family:"Fraunces",serif; font-size:24px; color:var(--accent); }
+  .dropzone .small { color:var(--text-muted); font-size:11px; margin-top:8px; }
+  .dropzone input[type="file"] { display:none; }
 
-/* EXPORT */
-.exp-wrap{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
-.exp-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--rl);padding:14px}
-.exp-card h4{font-size:13px;font-weight:700;margin-bottom:6px}
-.exp-card p{font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.6}
-.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-.mail-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px;font-size:12px;line-height:1.8;margin-top:8px;max-height:220px;overflow-y:auto;white-space:pre-wrap}
-.mail-box mark{background:#fef3c7;border-radius:3px;padding:0 2px}
-.src-grid{display:flex;flex-direction:column;gap:6px}
-.src-entry{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg2);border-radius:var(--r);font-size:12px;gap:10px}
-.src-entry .sn{font-weight:700}
-.t-live{font-size:9px;padding:2px 7px;border-radius:10px;background:#dcfce7;color:#14532d;font-weight:700}
-.t-upload{font-size:9px;padding:2px 7px;border-radius:10px;background:#dbeafe;color:#1e40af;font-weight:700}
-.t-link{font-size:9px;padding:2px 7px;border-radius:10px;background:#fef3c7;color:#78350f;font-weight:700}
+  .mapping {
+    margin-top:24px; display:none;
+  }
+  .mapping.visible { display:block; }
+  .mapping h3 {
+    font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--accent); margin:0 0 12px; border-bottom:1px solid var(--border);
+    padding-bottom:6px;
+  }
+  .mapping-grid {
+    display:grid; grid-template-columns: 200px 1fr 100px; gap:8px 16px;
+    align-items:center; font-size:12px;
+  }
+  .mapping-grid .target { color:var(--text); font-weight:700; }
+  .mapping-grid .required { color:var(--accent); }
+  .mapping-grid select {
+    background:var(--bg-elev); border:1px solid var(--border);
+    padding:6px 8px; border-radius:3px; color:var(--text); font-family:"JetBrains Mono",monospace;
+    font-size:11px;
+  }
+  .mapping-grid select:focus { outline:none; border-color:var(--accent); }
+  .mapping-grid .match-ind {
+    font-size:10px; text-align:right; color:var(--text-muted);
+  }
+  .mapping-grid .match-ind.matched { color:var(--ok); }
 
-/* HELP PANEL for Public Records */
-.help-note{padding:10px 14px;background:#fffbeb;border-bottom:1px solid #fcd34d;font-size:12px;color:#92400e;flex-shrink:0}
-.quicklinks{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg)}
-.ql-btn{height:26px;padding:0 10px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);font-size:11px;cursor:pointer;text-decoration:none;color:var(--text);display:inline-flex;align-items:center;gap:4px}
-.ql-btn:hover{background:var(--bg3)}
-.ql-btn.hot{border-color:#fca5a5;background:#fee2e2;color:#7f1d1d}
+  .preview-section { margin-top:24px; display:none; }
+  .preview-section.visible { display:block; }
+  .preview-section h3 {
+    font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--accent); margin:0 0 12px; border-bottom:1px solid var(--border);
+    padding-bottom:6px;
+  }
+  .preview-table {
+    max-height:300px; overflow:auto; border:1px solid var(--border); border-radius:4px;
+  }
+  .preview-table table { font-size:11px; }
+  .preview-table th { background:var(--bg-panel); font-size:9.5px; padding:6px 8px; }
+  .preview-table td { padding:5px 8px; }
+  .preview-stats {
+    display:flex; gap:20px; margin-top:10px; font-size:11px; color:var(--text-muted);
+  }
+  .preview-stats strong { color:var(--accent); font-family:"Fraunces",serif; font-size:15px; }
+
+  .modal-actions {
+    padding:14px 22px; border-top:1px solid var(--border);
+    display:flex; gap:8px; justify-content:flex-end; background:var(--bg-panel);
+    position:sticky; bottom:0;
+  }
+
+
+  @media (max-width: 1280px) {
+    main { grid-template-columns: 260px 1fr 340px; }
+  }
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
+    aside.filters, aside.detail { max-height:none; }
+    section.center { grid-template-rows: 400px 300px; }
+  }
 </style>
 </head>
 <body>
 <div class="app">
 
-  <!-- TOP BAR -->
-  <div class="topbar">
-    <div style="display:flex;align-items:center;gap:9px">
-      <div class="dot"></div>
-      <div class="logo">Bexar County Property Intelligence</div>
-      <span style="font-size:11px;color:var(--text2);border:1px solid var(--border);border-radius:var(--r);padding:2px 7px">San Antonio, TX</span>
+  <!-- HEADER -->
+  <header>
+    <div class="brand">
+      <h1>Maricopa <span class="dot">+</span> Pima Intel</h1>
+      <span class="sub">Motivated Seller Lead Desk</span>
     </div>
-    <div class="pills">
-      <span class="pill">Records <b id="tb-total">—</b></span>
-      <span class="pill hot">Hot leads <b id="tb-hot">—</b></span>
-      <span class="pill">Avg score <b id="tb-avg">—</b></span>
-      <span class="pill" id="tb-updated" style="color:var(--text2);font-size:10px"></span>
-      <button class="btn success" id="refresh-btn" onclick="triggerScrape()">↻ Refresh Now</button>
+    <div class="kpis">
+      <div class="kpi"><div class="val" id="kpi-total">—</div><div class="lbl">Leads</div></div>
+      <div class="kpi"><div class="val" id="kpi-mar">—</div><div class="lbl">Maricopa</div></div>
+      <div class="kpi"><div class="val" id="kpi-pima">—</div><div class="lbl">Pima</div></div>
+      <div class="kpi"><div class="val" id="kpi-stacked">—</div><div class="lbl">Stacked 2+</div></div>
+      <div class="kpi"><div class="val" id="kpi-updated">—</div><div class="lbl">Updated</div></div>
     </div>
-  </div>
+  </header>
 
-  <!-- NOTIFICATIONS -->
-  <div id="notify" class="notify info hidden">
-    <span id="notify-txt"></span>
-    <button onclick="this.parentElement.classList.add('hidden')">×</button>
-  </div>
+  <!-- MAIN -->
+  <main>
+    <!-- Filters -->
+    <aside class="filters">
+      <div class="filter-group">
+        <h3>Search</h3>
+        <input type="search" id="f-search" placeholder="APN, owner, address…" />
+      </div>
 
-  <div class="body">
-
-    <!-- SIDEBAR -->
-    <div class="sb">
-
-      <div class="sb-sec">
-        <div class="sb-h" onclick="toggleSb('sb-cat')">Categories <span id="a-cat">▾</span></div>
-        <div class="sb-b" id="sb-cat">
-          <div class="row"><input type="checkbox" id="f-foreclosure" checked onchange="applyF()"><div class="cdot" style="background:#991b1b"></div><label for="f-foreclosure">Foreclosure / Trustee</label><span class="cnt" id="c-foreclosure">0</span></div>
-          <div class="row"><input type="checkbox" id="f-deed" checked onchange="applyF()"><div class="cdot" style="background:#1e3a8a"></div><label for="f-deed">Deeds</label><span class="cnt" id="c-deed">0</span></div>
-          <div class="row"><input type="checkbox" id="f-lien" checked onchange="applyF()"><div class="cdot" style="background:#92400e"></div><label for="f-lien">Liens</label><span class="cnt" id="c-lien">0</span></div>
-          <div class="row"><input type="checkbox" id="f-probate" checked onchange="applyF()"><div class="cdot" style="background:#3730a3"></div><label for="f-probate">Probate / Heirship</label><span class="cnt" id="c-probate">0</span></div>
-          <div class="row"><input type="checkbox" id="f-lispendens" checked onchange="applyF()"><div class="cdot" style="background:#7e1d1d"></div><label for="f-lispendens">Lis Pendens</label><span class="cnt" id="c-lispendens">0</span></div>
-          <div class="row"><input type="checkbox" id="f-court" checked onchange="applyF()"><div class="cdot" style="background:#134e4a"></div><label for="f-court">Bankr / Divorce / Eviction</label><span class="cnt" id="c-court">0</span></div>
-          <div class="row"><input type="checkbox" id="f-tax" checked onchange="applyF()"><div class="cdot" style="background:#14532d"></div><label for="f-tax">Tax Delinquent</label><span class="cnt" id="c-tax">0</span></div>
+      <div class="filter-group">
+        <h3>County</h3>
+        <div class="chip-row" id="f-county">
+          <span class="chip county-maricopa active" data-val="Maricopa">Maricopa</span>
+          <span class="chip county-pima active"    data-val="Pima">Pima</span>
         </div>
       </div>
 
-      <div class="sb-sec">
-        <div class="sb-h" onclick="toggleSb('sb-ms')">Motivated Seller Flags <span id="a-ms">▾</span></div>
-        <div class="sb-b" id="sb-ms">
-          <div class="row"><input type="checkbox" id="ms-taxdel" onchange="applyF()"><label for="ms-taxdel">Delinquent taxes</label></div>
-          <div class="row"><input type="checkbox" id="ms-fc" onchange="applyF()"><label for="ms-fc">Pre-foreclosure / FC</label></div>
-          <div class="row"><input type="checkbox" id="ms-probate" onchange="applyF()"><label for="ms-probate">Probate / estate</label></div>
-          <div class="row"><input type="checkbox" id="ms-lispendens" onchange="applyF()"><label for="ms-lispendens">Lis pendens filed</label></div>
-          <div class="row"><input type="checkbox" id="ms-bk" onchange="applyF()"><label for="ms-bk">Bankruptcy</label></div>
-          <div class="row"><input type="checkbox" id="ms-divorce" onchange="applyF()"><label for="ms-divorce">Divorce filing</label></div>
-          <div class="row"><input type="checkbox" id="ms-multilien" onchange="applyF()"><label for="ms-multilien">Multiple liens</label></div>
-          <div class="row"><input type="checkbox" id="ms-judgment" onchange="applyF()"><label for="ms-judgment">Judgment lien</label></div>
-          <div class="row"><input type="checkbox" id="ms-absentee" onchange="applyF()"><label for="ms-absentee">Absentee owner</label></div>
-          <div class="row"><input type="checkbox" id="ms-vacant" onchange="applyF()"><label for="ms-vacant">Vacant / abandoned</label></div>
-          <div class="row"><input type="checkbox" id="ms-llc" onchange="applyF()"><label for="ms-llc">LLC / corp owner</label></div>
-          <div class="row"><input type="checkbox" id="ms-newonly" onchange="applyF()"><label for="ms-newonly">New this week</label></div>
+      <div class="filter-group">
+        <h3>Signal Types</h3>
+        <div class="chip-row" id="f-signals"></div>
+      </div>
+
+      <div class="filter-group">
+        <h3>Flags</h3>
+        <div class="chip-row" id="f-flags">
+          <span class="chip" data-val="absentee">Absentee</span>
+          <span class="chip" data-val="out_of_state">Out of State</span>
+          <span class="chip" data-val="stacked">Stacked 2+</span>
+          <span class="chip" data-val="estate_owner">Estate / Heirs</span>
+          <span class="chip" data-val="family_trust">Family Trust</span>
+          <span class="chip" data-val="likely_vacant">Likely Vacant</span>
+          <span class="chip" data-val="long_hold">10+ yr hold</span>
+          <span class="chip" data-val="hide_cash_buyer">Hide LLC / Inc</span>
         </div>
       </div>
 
-      <div class="sb-sec">
-        <div class="sb-h" onclick="toggleSb('sb-score')">Min seller score <span id="a-score">▾</span></div>
-        <div id="sb-score" class="rng">
-          <input type="range" min="0" max="100" value="0" step="1" id="score-slide" oninput="document.getElementById('score-v').textContent=this.value;applyF()">
-          <div class="rng-lbl"><span>0</span><span id="score-v">0</span><span>100</span></div>
+      <div class="filter-group">
+        <h3>Min Score</h3>
+        <div class="slider-row"><span>0</span><span class="val" id="f-score-val">0</span><span>200</span></div>
+        <input type="range" id="f-score" min="0" max="200" value="0" step="5" />
+      </div>
+
+      <div class="filter-group">
+        <h3>Min Equity ($)</h3>
+        <div class="slider-row"><span>0</span><span class="val" id="f-eq-val">0</span><span>500k</span></div>
+        <input type="range" id="f-equity" min="0" max="500000" value="0" step="10000" />
+      </div>
+
+      <div class="filter-group">
+        <h3>Tax Roll Import</h3>
+        <div class="btn-row">
+          <button class="btn primary" id="btn-upload" style="width:100%">↑ Upload Tax Roll CSV</button>
         </div>
       </div>
 
-      <div class="sb-sec">
-        <div class="sb-h" onclick="toggleSb('sb-amt')">Amount due <span id="a-amt">▾</span></div>
-        <div class="sb-b" id="sb-amt">
-          <div class="pair">
-            <input placeholder="Min $" id="amt-min" onchange="applyF()">
-            <input placeholder="Max $" id="amt-max" onchange="applyF()">
-          </div>
+      <div class="filter-group">
+        <h3>Export</h3>
+        <div class="btn-row">
+          <button class="btn primary" id="btn-skip">Skip Trace CSV</button>
+          <button class="btn primary" id="btn-ghl">GHL CSV</button>
+          <button class="btn" id="btn-json">JSON</button>
         </div>
       </div>
+    </aside>
 
-      <div class="sb-sec">
-        <div class="sb-h" onclick="toggleSb('sb-src')">Data sources <span id="a-src">▾</span></div>
-        <div class="sb-b" id="sb-src">
-          <div class="src-status">
-            <div class="src-row"><span>Public Records</span><span class="live-tag">LIVE</span></div>
-            <div class="src-row"><span>Foreclosure Map</span><span class="live-tag">LIVE</span></div>
-            <div class="src-row"><span>Tax File</span><span class="upload-tag">UPLOAD</span></div>
-            <div class="src-row"><span>Tax Assessor</span><span class="link-tag">LINK</span></div>
-          </div>
-        </div>
+    <!-- Center: table + map -->
+    <section class="center">
+      <div class="table-wrap">
+        <table id="tbl">
+          <thead>
+            <tr>
+              <th data-sort="score">Score <span class="sort-arrow">▼</span></th>
+              <th data-sort="county">Co.</th>
+              <th data-sort="signal_count">Stack</th>
+              <th data-sort="signals">Signals</th>
+              <th data-sort="site_address">Property</th>
+              <th data-sort="owner">Owner</th>
+              <th data-sort="equity_est">Equity</th>
+              <th data-sort="year_built">Built</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
       </div>
+      <div id="map"></div>
+    </section>
 
-      <div class="sb-sec" style="padding:8px 12px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:6px">Upload tax file</div>
-        <label class="up-zone" for="tax-file">
-          + Drop .xlsx or .csv<br>
-          <span style="font-size:11px;color:var(--text3)">bi-monthly delinquent list</span>
-        </label>
-        <input type="file" id="tax-file" accept=".xlsx,.csv" style="display:none" onchange="handleUpload(event)">
-        <div id="up-msg" style="font-size:11px;color:var(--success);text-align:center;margin-top:4px"></div>
-      </div>
+    <!-- Detail + calculator -->
+    <aside class="detail" id="detail">
+      <div class="empty-detail">Select a lead to view details and run deal math</div>
+    </aside>
+  </main>
 
-      <div style="padding:8px 12px 12px">
-        <button class="btn" onclick="resetAll()" style="width:100%;justify-content:center;font-size:12px">Reset all filters</button>
-      </div>
+  <!-- FOOTER -->
+  <footer>
+    <span id="foot-count">0 leads shown</span>
+    <span>Infinity Cash Offer · Built on public records · Data updates nightly when wired to GH Actions</span>
+  </footer>
+</div>
+
+<!-- TAX ROLL UPLOADER MODAL -->
+<div class="modal-overlay" id="upload-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Tax Roll Import</h2>
+      <button class="close" id="upload-close">×</button>
     </div>
+    <div class="modal-body">
 
-    <!-- MAIN CONTENT -->
-    <div class="main">
-      <div class="tabs">
-        <div class="tab active" id="tab-live" onclick="switchView('live')">Live Feed</div>
-        <div class="tab" id="tab-fc" onclick="switchView('fc')">Foreclosures</div>
-        <div class="tab" id="tab-tax" onclick="switchView('tax')">Tax Delinquent</div>
-        <div class="tab" id="tab-pubsearch" onclick="switchView('pubsearch')">Public Records</div>
-        <div class="tab" id="tab-stack" onclick="switchView('stack')">Stack</div>
-        <div class="tab" id="tab-deal" onclick="switchView('deal')">Deal Analyzer</div>
-        <div class="tab" id="tab-export" onclick="switchView('export')">Export + Mail</div>
+      <div class="dropzone" id="dropzone">
+        <div class="big">Drop tax roll CSV here</div>
+        <div class="small">or click to browse · accepts .csv / .tsv · all processing happens in your browser, nothing is uploaded</div>
+        <input type="file" id="file-input" accept=".csv,.tsv,text/csv" />
       </div>
 
-      <!-- ===== LIVE FEED ===== -->
-      <div class="view active" id="view-live">
-        <div class="ctrl">
-          <div class="srch"><span class="si">⌕</span><input id="live-srch" placeholder="Search address, owner, doc type..." oninput="applyF()"></div>
-          <select class="sel" id="live-sort" onchange="applyF()">
-            <option value="score">Seller score ↓</option>
-            <option value="date-d">Newest first</option>
-            <option value="date-a">Oldest first</option>
-            <option value="amt">Amount ↓</option>
-          </select>
-          <select class="sel" id="live-city" onchange="applyF()">
-            <option value="">All cities</option>
-            <option>San Antonio</option><option>Elmendorf</option><option>Converse</option>
-            <option>Universal City</option><option>Leon Valley</option><option>Helotes</option>
-          </select>
-          <button class="btn" onclick="csvExport()">Export CSV</button>
+      <div class="mapping" id="mapping">
+        <h3>Column Mapping</h3>
+        <div style="font-size:11px; color:var(--text-muted); margin-bottom:12px">
+          We auto-detected your column headers. Override any mapping using the dropdowns.
+          Required fields marked in gold.
         </div>
-        <div class="stats">
-          <div class="sc"><div class="sl">Showing</div><div class="sv blu" id="ls-total">—</div><div class="ss">records</div></div>
-          <div class="sc"><div class="sl">Score 80+</div><div class="sv red" id="ls-hot">—</div><div class="ss">hot leads</div></div>
-          <div class="sc"><div class="sl">Avg score</div><div class="sv amb" id="ls-avg">—</div><div class="ss">motivated seller</div></div>
-          <div class="sc"><div class="sl">New this week</div><div class="sv grn" id="ls-new">—</div><div class="ss">filings</div></div>
-          <div class="sc"><div class="sl">Total exposure</div><div class="sv red" id="ls-exp" style="font-size:13px">—</div><div class="ss">amount due</div></div>
-        </div>
-        <div style="display:flex;flex:1;min-height:0">
-          <div class="tbl" id="live-tbl">
-            <table>
-              <colgroup><col style="width:21%"><col style="width:14%"><col style="width:9%"><col style="width:14%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:18%"></colgroup>
-              <thead><tr>
-                <th onclick="setSort('address')">Address</th>
-                <th onclick="setSort('owner')">Owner</th>
-                <th onclick="setSort('category')">Category</th>
-                <th onclick="setSort('docType')">Doc type</th>
-                <th onclick="setSort('date')">Filed</th>
-                <th onclick="setSort('amount')">Amt due</th>
-                <th onclick="setSort('score')">Score</th>
-                <th>MS flags</th>
-              </tr></thead>
-              <tbody id="live-tbody"></tbody>
-            </table>
-            <div id="live-empty" class="empty" style="display:none">No records match current filters.</div>
-          </div>
-          <div class="dp" id="detail-panel">
-            <div class="dp-h">
-              <h3>Property detail</h3>
-              <button class="dp-x" onclick="closeDetail()">×</button>
-            </div>
-            <div id="dp-body"></div>
-          </div>
-        </div>
-        <div class="pager">
-          <button onclick="lPg(-1)" id="l-prev">← Prev</button>
-          <span id="l-pg">Page 1 of 1</span>
-          <button onclick="lPg(1)" id="l-next">Next →</button>
-          <span style="margin-left:auto" id="l-info"></span>
-        </div>
-      </div>
+        <div class="mapping-grid" id="mapping-grid"></div>
 
-      <!-- ===== FORECLOSURES ===== -->
-      <div class="view" id="view-fc">
-        <div class="src-banner live"><div class="src-dot"></div>Live source: maps.bexar.org ArcGIS REST API — ForeclosuresProd MapServer. Updated twice monthly by Bexar County Clerk.</div>
-        <div class="ctrl">
-          <div class="srch"><span class="si">⌕</span><input id="fc-srch" placeholder="Search address..." oninput="applyFc()"></div>
-          <select class="sel" id="fc-type" onchange="applyFc()"><option value="">All types</option><option>Mortgage</option><option>Tax</option></select>
-          <a href="https://maps.bexar.org/foreclosures/" target="_blank" class="btn" style="text-decoration:none">Open Foreclosure Map ↗</a>
-          <a href="https://maps.bexar.org/arcgis/rest/services/CC/ForeclosuresProd/MapServer/0/query?where=1%3D1&outFields=*&f=json" target="_blank" class="btn" style="text-decoration:none">Raw API ↗</a>
+        <div style="margin-top:16px;">
+          <label style="font-size:11px; color:var(--text-muted);">
+            <input type="checkbox" id="merge-mode" style="accent-color:var(--accent); margin-right:6px" checked>
+            Merge into intel as <span style="color:var(--accent); font-weight:700">Tax Delinquent</span> signal (joins by APN to existing parcel master)
+          </label>
         </div>
-        <div class="stats">
-          <div class="sc"><div class="sl">Active notices</div><div class="sv red" id="fc-total">—</div></div>
-          <div class="sc"><div class="sl">Mortgage</div><div class="sv amb" id="fc-mort">—</div></div>
-          <div class="sc"><div class="sl">Tax</div><div class="sv" id="fc-tax">—</div></div>
-          <div class="sc"><div class="sl">Next sale date</div><div class="sv grn" style="font-size:12px">1st Tue/Mo</div></div>
-          <div class="sc"><div class="sl">Data status</div><div class="sv grn" style="font-size:11px" id="fc-status">Loading…</div></div>
-        </div>
-        <div class="tbl">
-          <table>
-            <colgroup><col style="width:28%"><col style="width:9%"><col style="width:16%"><col style="width:10%"><col style="width:11%"><col style="width:14%"><col style="width:12%"></colgroup>
-            <thead><tr><th>Address</th><th>Type</th><th>Doc number</th><th>Sale date</th><th>Amount</th><th>Attorney</th><th>Actions</th></tr></thead>
-            <tbody id="fc-tbody"></tbody>
-          </table>
-          <div id="fc-empty" class="empty" style="display:none">Loading foreclosure data from county API…</div>
-        </div>
-      </div>
-
-      <!-- ===== TAX DELINQUENT ===== -->
-      <div class="view" id="view-tax">
-        <div class="src-banner upload"><div class="src-dot"></div>Source: Uploaded bi-monthly file. For the freshest list, visit <a href="https://taxsales.lgbs.com/" target="_blank">taxsales.lgbs.com</a> (updated the 15th of each month) or request the full certified roll from BCAD at bcad.org.</div>
-        <div class="ctrl">
-          <div class="srch"><span class="si">⌕</span><input id="tax-srch" placeholder="Search address or owner..." oninput="applyTax()"></div>
-          <select class="sel" id="tax-yr" onchange="applyTax()">
-            <option value="">All years</option>
-            <option>2024</option><option>2023</option><option>2022</option><option>2021</option><option>2020</option><option>2019</option>
-          </select>
-          <select class="sel" id="tax-cls" onchange="applyTax()">
-            <option value="">All types</option>
-            <option>SINGLE FAMILY RES</option><option>SMALL VACANT TRACTS OF LAND</option>
-            <option>MOBILE HOME WITH LAND</option><option>MULTIFAMILY RESIDENCE</option>
-          </select>
-          <select class="sel" id="tax-tag" onchange="applyTax()">
-            <option value="">All tags</option>
-            <option>INDIVIDUAL</option><option>ESTATE</option><option>LLC OWNER</option><option>TRUST</option>
-          </select>
-          <button class="btn" onclick="csvTax()">Export CSV</button>
-          <a href="https://bexar.acttax.com/act_webdev/bexar/index.jsp" target="_blank" class="btn" style="text-decoration:none">Tax Assessor ↗</a>
-        </div>
-        <div class="stats">
-          <div class="sc"><div class="sl">Records</div><div class="sv blu" id="t-total">—</div></div>
-          <div class="sc"><div class="sl">Total due</div><div class="sv red" id="t-due">—</div></div>
-          <div class="sc"><div class="sl">Avg due</div><div class="sv amb" id="t-avg">—</div></div>
-          <div class="sc"><div class="sl">Homesteads</div><div class="sv grn" id="t-hs">—</div></div>
-          <div class="sc"><div class="sl">Estates</div><div class="sv" id="t-est">—</div></div>
-        </div>
-        <div class="tbl">
-          <table>
-            <colgroup><col style="width:9%"><col style="width:23%"><col style="width:10%"><col style="width:16%"><col style="width:9%"><col style="width:13%"><col style="width:9%"><col style="width:11%"></colgroup>
-            <thead><tr><th>Account</th><th>Address</th><th>City</th><th>Owner</th><th>Tag</th><th>Class</th><th>Del yr</th><th>Amt due</th></tr></thead>
-            <tbody id="tax-tbody"></tbody>
-          </table>
-          <div id="tax-empty" class="empty">Upload your tax delinquent file using the sidebar to see records here.</div>
-        </div>
-        <div class="pager">
-          <button onclick="tPg(-1)" id="t-prev">← Prev</button>
-          <span id="t-pg">Page 1</span>
-          <button onclick="tPg(1)" id="t-next">Next →</button>
-          <span style="margin-left:auto" id="t-info"></span>
-        </div>
-      </div>
-
-      <!-- ===== PUBLIC RECORDS SEARCH ===== -->
-      <div class="view" id="view-pubsearch">
-        <div class="help-note">
-          <b>How live data gets here:</b> Your Vercel server fetches bexar.tx.publicsearch.us every 6 hours and saves results to records.json. The Live Feed tab shows those results. Use the quick-launch buttons below to search the county site directly for anything not yet in a scheduled refresh.
-        </div>
-        <div class="quicklinks">
-          <span style="font-size:11px;font-weight:700;color:var(--text2);margin-right:4px">Quick launch:</span>
-          <a class="ql-btn hot" href="https://bexar.tx.publicsearch.us/results?department=RP&docTypes=NOTS,SUBST&limit=250&recordedDateRange=20250101,20260327&searchType=advancedSearch" target="_blank">Notice of Trustee Sale ↗</a>
-          <a class="ql-btn hot" href="https://bexar.tx.publicsearch.us/results?department=RP&docTypes=LISPEN&limit=250&recordedDateRange=20250101,20260327&searchType=advancedSearch" target="_blank">Lis Pendens ↗</a>
-          <a class="ql-btn" href="https://bexar.tx.publicsearch.us/results?department=RP&docTypes=TAXLN,IRSLN,JUDLN&limit=250&recordedDateRange=20250101,20260327&searchType=advancedSearch" target="_blank">Tax/IRS/Judgment Liens ↗</a>
-          <a class="ql-btn" href="https://bexar.tx.publicsearch.us/results?department=RP&docTypes=MECHL,HOALN&limit=250&recordedDateRange=20250101,20260327&searchType=advancedSearch" target="_blank">Mechanic / HOA Liens ↗</a>
-          <a class="ql-btn" href="https://bexar.tx.publicsearch.us/results?department=RP&docTypes=PROBAT,HEIRSH,AFFH&limit=250&recordedDateRange=20250101,20260327&searchType=advancedSearch" target="_blank">Probate / Heirship ↗</a>
-          <a class="ql-btn" href="https://bexar.tx.publicsearch.us/results?department=RP&docTypes=WARRD,QUITD,SPWRD&limit=250&recordedDateRange=20250101,20260327&searchType=advancedSearch" target="_blank">All Deed Types ↗</a>
-          <a class="ql-btn" href="https://bexar.tx.publicsearch.us/search/advanced" target="_blank">Advanced Search ↗</a>
-        </div>
-        <div class="ctrl">
-          <div class="srch"><span class="si">⌕</span><input id="ps-srch" placeholder="Filter loaded records by address or owner..." oninput="applyPS()"></div>
-          <select class="sel" id="ps-cat" onchange="applyPS()">
-            <option value="">All categories</option>
-            <option value="foreclosure">Foreclosure</option>
-            <option value="lien">Liens</option>
-            <option value="deed">Deeds</option>
-            <option value="probate">Probate</option>
-            <option value="lispendens">Lis Pendens</option>
-            <option value="court">Court / Legal</option>
-          </select>
-          <select class="sel" id="ps-days" onchange="applyPS()">
-            <option value="7">Last 7 days</option>
-            <option value="14">Last 14 days</option>
-            <option value="30">Last 30 days</option>
-            <option value="0">All dates</option>
-          </select>
-          <button class="btn" onclick="csvPS()">Export CSV</button>
-        </div>
-        <div class="stats">
-          <div class="sc"><div class="sl">Loaded records</div><div class="sv blu" id="ps-total">—</div></div>
-          <div class="sc"><div class="sl">Foreclosures</div><div class="sv red" id="ps-fc">—</div></div>
-          <div class="sc"><div class="sl">Liens</div><div class="sv amb" id="ps-lien">—</div></div>
-          <div class="sc"><div class="sl">Probate / Heirship</div><div class="sv" id="ps-prob">—</div></div>
-          <div class="sc"><div class="sl">Last fetched</div><div class="sv grn" style="font-size:11px" id="ps-fetched">—</div></div>
-        </div>
-        <div class="tbl">
-          <table>
-            <colgroup><col style="width:22%"><col style="width:15%"><col style="width:10%"><col style="width:16%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:9%"></colgroup>
-            <thead><tr><th>Address</th><th>Owner</th><th>Category</th><th>Doc type</th><th>Filed</th><th>Doc #</th><th>Score</th><th>View</th></tr></thead>
-            <tbody id="ps-tbody"></tbody>
-          </table>
-          <div id="ps-empty" class="empty">Records from bexar.tx.publicsearch.us will appear here after the first scheduled fetch (every 6 hours via your Vercel server). Use the quick-launch buttons above to search the county site directly now.</div>
-        </div>
-        <div class="pager">
-          <button onclick="psPg(-1)" id="ps-prev">← Prev</button>
-          <span id="ps-pg">Page 1</span>
-          <button onclick="psPg(1)" id="ps-next">Next →</button>
-          <span style="margin-left:auto" id="ps-info"></span>
-        </div>
-      </div>
-
-      <!-- ===== STACK ===== -->
-      <div class="view" id="view-stack">
-        <div class="ctrl" style="justify-content:space-between">
-          <div>
-            <span style="font-size:13px;font-weight:700">Property Intelligence Stack</span>
-            <span style="font-size:12px;color:var(--text2);margin-left:10px">Cross-referenced by address across all sources — highest distress first</span>
-          </div>
-          <div style="display:flex;gap:6px">
-            <select class="sel" id="stk-min" onchange="renderStack()">
-              <option value="0">All scores</option><option value="60">Score 60+</option>
-              <option value="75">Score 75+</option><option value="85">Hot only (85+)</option>
+        <div style="margin-top:10px;">
+          <label style="font-size:11px; color:var(--text-muted);">County:
+            <select id="upload-county" style="background:var(--bg-elev); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:3px; margin-left:6px;">
+              <option value="Maricopa">Maricopa</option>
+              <option value="Pima">Pima</option>
+              <option value="Both">Both / Auto-detect by APN format</option>
             </select>
-            <button class="btn p" onclick="buildStack()">Build stack</button>
-            <button class="btn" onclick="csvStack()">Export stack</button>
-          </div>
-        </div>
-        <div class="stk-wrap" id="stk-content">
-          <div class="empty" style="padding:50px">
-            <div style="font-size:28px;color:var(--text3);margin-bottom:12px">⊞</div>
-            <div style="font-size:14px;font-weight:700;margin-bottom:8px">Stack not built yet</div>
-            <div style="font-size:13px">Click "Build stack" to cross-reference all sources by address.<br>Properties with multiple distress signals rise to the top.</div>
-          </div>
+          </label>
         </div>
       </div>
 
-      <!-- ===== DEAL ANALYZER ===== -->
-      <div class="view" id="view-deal">
-        <div class="deal-wrap">
-          <div style="margin-bottom:12px">
-            <div style="font-size:14px;font-weight:700;margin-bottom:4px">Maximum Allowable Offer (MAO) calculator</div>
-            <div style="font-size:12px;color:var(--text2)">Enter property details to calculate your max offer, net profit, ROI, and get a deal verdict.</div>
-          </div>
-          <div id="deal-verdict" class="verdict go" style="display:none"></div>
-          <div class="deal-grid">
-            <div class="deal-card">
-              <h4>Property inputs</h4>
-              <div class="dr"><label>After Repair Value (ARV)</label><input type="number" id="d-arv" value="185000" oninput="calcDeal()"></div>
-              <div class="dr"><label>Estimated repairs</label><input type="number" id="d-rep" value="35000" oninput="calcDeal()"></div>
-              <div class="dr"><label>Purchase price</label><input type="number" id="d-price" value="75000" oninput="calcDeal()"></div>
-              <div class="dr"><label>Delinquent taxes owed</label><input type="number" id="d-tax" value="8500" oninput="calcDeal()"></div>
-              <div class="dr"><label>Other liens / payoffs</label><input type="number" id="d-liens" value="0" oninput="calcDeal()"></div>
-              <div class="dr"><label>Holding cost / month</label><input type="number" id="d-hold" value="1200" oninput="calcDeal()"></div>
-              <div class="dr"><label>Hold months</label><input type="number" id="d-mo" value="4" oninput="calcDeal()"></div>
-            </div>
-            <div class="deal-card">
-              <h4>Strategy &amp; costs</h4>
-              <div class="dr"><label>Exit strategy</label>
-                <select id="d-strat" onchange="calcDeal()">
-                  <option value="flip">Fix &amp; Flip (70% rule)</option>
-                  <option value="wholesale">Wholesale (65%)</option>
-                  <option value="rental">Buy &amp; Hold (75%)</option>
-                </select>
-              </div>
-              <div class="dr"><label>Closing costs</label><input type="number" id="d-close" value="3500" oninput="calcDeal()"></div>
-              <div class="dr"><label>Agent / selling fees</label><input type="number" id="d-agent" value="5500" oninput="calcDeal()"></div>
-              <div class="dr"><label>Wholesale fee (if any)</label><input type="number" id="d-wf" value="0" oninput="calcDeal()"></div>
-              <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:8px">Results</div>
-                <div style="display:flex;gap:10px;flex-wrap:wrap">
-                  <div style="flex:1;min-width:80px"><div style="font-size:10px;color:var(--text2)">MAO</div><div style="font-size:20px;font-weight:700" id="d-mao">—</div></div>
-                  <div style="flex:1;min-width:80px"><div style="font-size:10px;color:var(--text2)">Net profit</div><div style="font-size:20px;font-weight:700" id="d-profit">—</div></div>
-                  <div style="flex:1;min-width:80px"><div style="font-size:10px;color:var(--text2)">ROI</div><div style="font-size:20px;font-weight:700" id="d-roi">—</div></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <table class="bdt" id="d-bdt"></table>
+      <div class="preview-section" id="preview">
+        <h3>Cleaned Preview</h3>
+        <div class="preview-table">
+          <table>
+            <thead id="preview-thead"></thead>
+            <tbody id="preview-tbody"></tbody>
+          </table>
+        </div>
+        <div class="preview-stats">
+          <span>Rows: <strong id="stat-rows">0</strong></span>
+          <span>With APN: <strong id="stat-apn">0</strong></span>
+          <span>With mailing address: <strong id="stat-mail">0</strong></span>
+          <span>Total $ owed: <strong id="stat-owed">$0</strong></span>
         </div>
       </div>
 
-      <!-- ===== EXPORT + MAIL ===== -->
-      <div class="view" id="view-export">
-        <div class="exp-wrap">
-          <div class="exp-card">
-            <h4>Data exports</h4>
-            <p>Export the current filtered view from any tab as a CSV ready for skip tracing, direct mail, or CRM import.</p>
-            <div class="btn-row">
-              <button class="btn" onclick="csvExport()">Live feed CSV</button>
-              <button class="btn" onclick="csvTax()">Tax delinquent CSV</button>
-              <button class="btn" onclick="csvStack()">Stack CSV</button>
-              <button class="btn" onclick="csvPS()">Public records CSV</button>
-            </div>
-          </div>
-          <div class="exp-card">
-            <h4>Mailing label list</h4>
-            <p>Generates formatted owner mailing addresses from the current stack for direct mail. Builds automatically from your highest-scored properties.</p>
-            <button class="btn p" onclick="buildMailList()">Generate mailing list</button>
-            <div id="mail-out" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
-          </div>
-          <div class="exp-card">
-            <h4>Direct mail template</h4>
-            <p>Personalized letter for motivated seller outreach. Copy and merge with your mailing list.</p>
-            <div class="mail-box">Dear <mark>[OWNER NAME]</mark>,
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="upload-clear" style="display:none">Clear</button>
+      <button class="btn primary" id="upload-download" style="display:none">Download Clean CSV</button>
+      <button class="btn primary" id="upload-merge" style="display:none">Merge into Leads</button>
+    </div>
+  </div>
+</div>
 
-I am a local real estate investor in San Antonio. I noticed your property at <mark>[PROPERTY ADDRESS]</mark> and wanted to reach out directly.
+<!-- LOADER -->
+<div class="loader" id="loader">
+  <div style="text-align:center">
+    <div class="wave">loading motivated sellers…</div>
+    <div class="hint">reading data/leads.json</div>
+  </div>
+</div>
 
-I buy houses in any condition — cash offers, close in as little as 10 days, no repairs needed, no commissions, no hassle.
-
-If you have any interest in a fair, confidential offer, please call or text me at <mark>[YOUR PHONE]</mark>.
-
-There is absolutely no obligation. I just want to help find the best solution for your situation.
-
-Sincerely,
-<mark>[YOUR NAME]</mark>
-Local Real Estate Investor — San Antonio, TX</div>
-          </div>
-          <div class="exp-card">
-            <h4>Official county sources</h4>
-            <div class="src-grid">
-              <div class="src-entry"><span class="sn">Public Records Search</span><a href="https://bexar.tx.publicsearch.us/search/advanced" target="_blank" class="btn">Open ↗</a></div>
-              <div class="src-entry"><span class="sn">Foreclosure Map (ArcGIS)</span><a href="https://maps.bexar.org/foreclosures/" target="_blank" class="btn">Open ↗</a></div>
-              <div class="src-entry"><span class="sn">Tax Assessor Lookup</span><a href="https://bexar.acttax.com/act_webdev/bexar/index.jsp" target="_blank" class="btn">Open ↗</a></div>
-              <div class="src-entry"><span class="sn">LGBS Tax Sale List (monthly)</span><a href="https://taxsales.lgbs.com/" target="_blank" class="btn">Open ↗</a></div>
-              <div class="src-entry"><span class="sn">BCAD Property Search</span><a href="https://esearch.bcad.org/" target="_blank" class="btn">Open ↗</a></div>
-              <div class="src-entry"><span class="sn">All Parcels ArcGIS API (696k)</span><a href="https://maps.bexar.org/arcgis/rest/services/Parcels/MapServer/0" target="_blank" class="btn">Open ↗</a></div>
-              <div class="src-entry"><span class="sn">Bexar Open Data Portal</span><a href="https://gis-bexar.opendata.arcgis.com/" target="_blank" class="btn">Open ↗</a></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div><!-- /main -->
-  </div><!-- /body -->
-</div><!-- /app -->
-
+<script src="https://unpkg.com/[email protected]/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<!-- Leaflet loaded from head (cdnjs) — kept fallback reference removed -->
 <script>
-// ─── CONFIG ─────────────────────────────────────────────────────────────────
-// IMPORTANT: After you deploy to Vercel, paste your Vercel project URL here
-// Example: 'https://bexar-intel.vercel.app'
-const VERCEL_URL = '';
+/* ============================================================
+   State
+   ============================================================ */
+const state = {
+  leads: [],
+  filtered: [],
+  selectedId: null,
+  filters: {
+    counties: new Set(["Maricopa","Pima"]),
+    signals:  new Set(),
+    flags:    new Set(),
+    minScore: 0,
+    minEquity: 0,
+    search: "",
+  },
+  sort: { key: "score", dir: -1 },
+  map: null,
+  markers: null,
+  calcMode: "wholesale",
+};
 
-// The data file your scraper writes to — served from your Vercel deployment
-function dataURL() {
-  if (VERCEL_URL) return VERCEL_URL + '/data/records.json';
-  return './data/records.json'; // local fallback
+const $  = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const fmt = n => n == null ? "—" : (typeof n === "number" ? n.toLocaleString() : String(n));
+const fmtM = n => !n ? "—" : "$" + Math.round(n).toLocaleString();
+
+/* ============================================================
+   Data loading
+   ============================================================ */
+async function loadData() {
+  try {
+    const res = await fetch("data/leads.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("leads.json not found");
+    const payload = await res.json();
+    state.leads = (payload.leads || []).map((l, i) => ({ ...l, _id: i }));
+    $("#kpi-updated").textContent = (payload.generated_at || "").slice(0,10) || "—";
+    buildSignalChips();
+    applyFilters();
+    $("#loader").classList.add("hidden");     // hide loader FIRST so UI shows even if map fails
+    try { initMap(); } catch (e) { console.warn("map init failed:", e); }
+  } catch (e) {
+    $("#loader").innerHTML = `
+      <div style="text-align:center; padding:30px">
+        <div class="wave" style="color:var(--danger)">no data yet</div>
+        <div class="hint">
+          expected <code>data/leads.json</code><br/>
+          run: <code>python pipeline/build_leads.py</code><br/><br/>
+          <span style="color:var(--text-muted)">${e.message}</span>
+        </div>
+      </div>`;
+  }
 }
 
-// ─── STATE ───────────────────────────────────────────────────────────────────
-const CATS = ['foreclosure','deed','lien','probate','lispendens','court','tax'];
-const CAT_BADGE = {
-  foreclosure:'b-r',deed:'b-b',lien:'b-a',probate:'b-p',
-  lispendens:'b-r',court:'b-t',tax:'b-g',heirship:'b-p'
-};
-const CAT_COLORS = {
-  foreclosure:'#991b1b',deed:'#1e3a8a',lien:'#92400e',
-  probate:'#3730a3',lispendens:'#7e1d1d',court:'#134e4a',tax:'#14532d'
-};
-const MS_COLORS = {
-  taxdel:'#dc2626',fc:'#d97706',lispendens:'#dc2626',probate:'#7c3aed',
-  bk:'#ea580c',divorce:'#db2777',judgment:'#92400e',multilien:'#78350f',
-  absentee:'#059669',vacant:'#6b7280',llc:'#2563eb',newonly:'#16a34a'
-};
-const MS_LABELS = {
-  taxdel:'Tax delinquent',fc:'Pre-foreclosure',lispendens:'Lis pendens',probate:'Probate/estate',
-  bk:'Bankruptcy',divorce:'Divorce filing',judgment:'Judgment lien',multilien:'Multiple liens',
-  absentee:'Absentee owner',vacant:'Vacant',llc:'LLC/corp owner',newonly:'New this week'
-};
-const MS_WEIGHTS = {
-  taxdel:28,fc:22,lispendens:15,probate:14,bk:12,court:10,
-  judgment:10,divorce:10,hearing:10,multilien:8,code:8,fire:9,
-  absentee:7,vacant:6,llc:5
-};
+/* ============================================================
+   Filter chips: signals are discovered from the data
+   ============================================================ */
+function buildSignalChips() {
+  const types = new Set();
+  for (const l of state.leads) for (const s of (l.signals||[])) if (s.type) types.add(s.type);
+  const row = $("#f-signals");
+  row.innerHTML = "";
+  [...types].sort().forEach(t => {
+    const el = document.createElement("span");
+    el.className = "chip";
+    el.dataset.val = t;
+    el.textContent = t;
+    el.addEventListener("click", () => {
+      el.classList.toggle("active");
+      if (state.filters.signals.has(t)) state.filters.signals.delete(t);
+      else state.filters.signals.add(t);
+      applyFilters();
+    });
+    row.appendChild(el);
+  });
+}
 
-let LIVE = [], TAX_DATA = [], FC_DATA = [], filteredLive = [], filteredTax = [], filteredFC = [], filteredPS = [];
-let stackData = [];
-let lPage=1, tPage=1, psPage=1;
-const PS=50, TPS=100;
-let sortCol='score', sortDir=-1;
-let psData = []; // public records data from Vercel JSON
-
-function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
-function pick(a){return a[Math.floor(Math.random()*a.length)];}
-function fmt$(v){if(!v||v<=0)return '—';return '$'+Math.round(v).toLocaleString();}
-function fmtD(s){if(!s)return '—';try{const d=new Date(s);return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});}catch{return s;}}
-function fmtShort(s){if(!s)return '—';try{const d=new Date(s);const m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return m[d.getMonth()]+' '+d.getDate();}catch{return s;}}
-function calcScore(flags){return Math.min(100,flags.reduce((s,f)=>s+(MS_WEIGHTS[f]||5),0));}
-
-// ─── INIT ────────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
-  loadLiveData();
-  loadFCData();
-  calcDeal();
-  setTimeout(()=>{
-    showNotify('info','Dashboard loaded. Records refresh every 6 hours via your Vercel server. Use "Refresh Now" to trigger manually.');
-  }, 1500);
-  setInterval(loadLiveData, 6*60*60*1000); // auto-reload every 6h
+/* ============================================================
+   Filter bindings
+   ============================================================ */
+$$("#f-county .chip").forEach(el => {
+  el.addEventListener("click", () => {
+    el.classList.toggle("active");
+    const v = el.dataset.val;
+    if (state.filters.counties.has(v)) state.filters.counties.delete(v);
+    else state.filters.counties.add(v);
+    applyFilters();
+  });
+});
+$$("#f-flags .chip").forEach(el => {
+  el.addEventListener("click", () => {
+    el.classList.toggle("active");
+    const v = el.dataset.val;
+    if (state.filters.flags.has(v)) state.filters.flags.delete(v);
+    else state.filters.flags.add(v);
+    applyFilters();
+  });
+});
+$("#f-score").addEventListener("input", e => {
+  state.filters.minScore = +e.target.value;
+  $("#f-score-val").textContent = state.filters.minScore;
+  applyFilters();
+});
+$("#f-equity").addEventListener("input", e => {
+  state.filters.minEquity = +e.target.value;
+  $("#f-eq-val").textContent = state.filters.minEquity >= 1000 ? (state.filters.minEquity/1000)+"k" : state.filters.minEquity;
+  applyFilters();
+});
+$("#f-search").addEventListener("input", e => {
+  state.filters.search = e.target.value.toLowerCase().trim();
+  applyFilters();
 });
 
-// ─── LOAD DATA FROM VERCEL ───────────────────────────────────────────────────
-async function loadLiveData() {
-  try {
-    const res = await fetch(dataURL() + '?t=' + Date.now());
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-
-    LIVE = (data.records || []).map((r,i) => ({
-      ...r,
-      id: r.id || 'R'+i,
-      isNew: r.isNew !== undefined ? r.isNew : isWithinDays(r.date, 7)
-    }));
-
-    if (data.lastUpdated && data.lastUpdated !== 'pending') {
-      document.getElementById('tb-updated').textContent = 'Updated ' + fmtD(data.lastUpdated);
-      document.getElementById('ps-fetched').textContent = fmtShort(data.lastUpdated);
-    }
-
-    psData = [...LIVE];
-    updateTopStats();
-    updateCatCounts();
-    applyF();
-    applyPS();
-    showNotify('success', `${LIVE.length} records loaded from publicsearch.us — last fetch ${fmtD(data.lastUpdated)}`);
-  } catch(e) {
-    console.warn('Could not load live data:', e.message);
-    showNotify('warn', 'Live data not yet available. Deploy your Vercel scraper and the first fetch will populate records. Using demo data for now.');
-    generateDemoData();
-    applyF();
-    applyPS();
+/* ============================================================
+   Filtering + sorting
+   ============================================================ */
+function matches(lead) {
+  const f = state.filters;
+  if (!f.counties.has(lead.county)) return false;
+  if (f.signals.size > 0) {
+    const leadTypes = new Set((lead.signals||[]).map(s=>s.type));
+    let hit = false;
+    for (const t of f.signals) if (leadTypes.has(t)) { hit = true; break; }
+    if (!hit) return false;
   }
-}
-
-function isWithinDays(dateStr, days) {
-  if (!dateStr) return false;
-  try { return (Date.now() - new Date(dateStr).getTime()) < days * 86400000; }
-  catch { return false; }
-}
-
-async function loadFCData() {
-  const url = 'https://maps.bexar.org/arcgis/rest/services/CC/ForeclosuresProd/MapServer/0/query?where=1%3D1&outFields=ADDRESS,DOCNUM,SALEDATE,AMOUNT,ATTORNEY&returnGeometry=false&f=json&resultRecordCount=1000';
-  try {
-    const res = await fetch(url);
-    const data = await res.json();
-    FC_DATA = (data.features || []).map((f,i) => ({
-      address: f.attributes.ADDRESS || 'Address not provided',
-      type: 'Mortgage',
-      docNum: f.attributes.DOCNUM || 'FC-'+i,
-      saleDate: f.attributes.SALEDATE ? new Date(f.attributes.SALEDATE) : null,
-      amount: f.attributes.AMOUNT || 0,
-      atty: f.attributes.ATTORNEY || 'See document'
-    }));
-
-    // Also get tax foreclosures (layer 1)
-    const url2 = 'https://maps.bexar.org/arcgis/rest/services/CC/ForeclosuresProd/MapServer/1/query?where=1%3D1&outFields=ADDRESS,DOCNUM,SALEDATE,AMOUNT,ATTORNEY&returnGeometry=false&f=json&resultRecordCount=1000';
-    const res2 = await fetch(url2);
-    const data2 = await res2.json();
-    const taxFC = (data2.features || []).map((f,i) => ({
-      address: f.attributes.ADDRESS || 'Address not provided',
-      type: 'Tax',
-      docNum: f.attributes.DOCNUM || 'TFC-'+i,
-      saleDate: f.attributes.SALEDATE ? new Date(f.attributes.SALEDATE) : null,
-      amount: f.attributes.AMOUNT || 0,
-      atty: f.attributes.ATTORNEY || 'Linebarger Goggan'
-    }));
-    FC_DATA = [...FC_DATA, ...taxFC];
-
-    document.getElementById('fc-status').textContent = 'Live ✓';
-    filteredFC = [...FC_DATA];
-    renderFC();
-  } catch(e) {
-    document.getElementById('fc-status').textContent = 'Using demo data';
-    // Generate demo FC data as fallback
-    const attys = ['Linebarger Goggan','Barrett Daffin','McGlinchey Stafford','Buckley Madole'];
-    const streets = ['Oak St','Blanco Rd','Culebra Rd','Bandera Rd','Fredericksburg Rd','Nogalitos St','Zarzamora St','Commerce St','Military Dr','Pleasanton Rd'];
-    for(let i=0;i<42;i++){
-      FC_DATA.push({
-        address: rnd(100,9999)+' '+pick(streets)+', San Antonio TX',
-        type: Math.random()>.4?'Mortgage':'Tax',
-        docNum: 'FC-'+rnd(2024,2025)+'-'+rnd(10000,99999),
-        saleDate: new Date(Date.now()+rnd(5,45)*86400000),
-        amount: rnd(55000,480000),
-        atty: pick(attys)
-      });
-    }
-    filteredFC = [...FC_DATA];
-    renderFC();
+  if (f.flags.has("absentee")     && !lead.absentee)     return false;
+  if (f.flags.has("out_of_state") && !lead.out_of_state) return false;
+  if (f.flags.has("stacked")      && (lead.signal_count||0) < 2) return false;
+  if (f.flags.has("estate_owner") && !lead.estate_owner) return false;
+  if (f.flags.has("family_trust") && !lead.family_trust) return false;
+  if (f.flags.has("likely_vacant") && !lead.likely_vacant) return false;
+  if (f.flags.has("long_hold")    && !lead.long_hold)    return false;
+  if (f.flags.has("hide_cash_buyer") && lead.cash_buyer) return false;
+  if ((lead.score||0) < f.minScore) return false;
+  if ((lead.equity_est||0) < f.minEquity) return false;
+  if (f.search) {
+    const hay = [lead.apn, lead.owner, lead.site_address, lead.mail_address, lead.site_city]
+                .join(" ").toLowerCase();
+    if (!hay.includes(f.search)) return false;
   }
+  return true;
 }
 
-// ─── DEMO DATA (shown while Vercel not yet deployed) ─────────────────────────
-function generateDemoData() {
-  const streets=['Oak St','Blanco Rd','Culebra Rd','Bandera Rd','Fredericksburg Rd','New Braunfels Ave','Zarzamora St','Commerce St','Hildebrand Ave','Nogalitos St','Pleasanton Rd','Military Dr','Marbach Rd','Huebner Rd','Babcock Rd','Vance Jackson Rd','Perrin Beitel Rd','Nacogdoches Rd','Callaghan Rd','Ingram Rd'];
-  const cities=['San Antonio','San Antonio','San Antonio','San Antonio','Elmendorf','Converse','Universal City','Leon Valley'];
-  const ln=['GARCIA','RODRIGUEZ','MARTINEZ','HERNANDEZ','JOHNSON','WILLIAMS','SMITH','JONES','BROWN','DAVIS','MILLER','WILSON','MOORE','TAYLOR','ANDERSON','GONZALEZ','FLORES','REYES','MORALES','PEREZ'];
-  const fn=['JOSE','MARIA','JUAN','ANA','JAMES','MARY','JOHN','PATRICIA','ROBERT','LINDA','MICHAEL','BARBARA','WILLIAM','RICHARD','CHARLES'];
-  const msMap={
-    foreclosure:['fc'],lien:['multilien','judgment','taxdel'],
-    deed:[],probate:['probate'],
-    lispendens:['lispendens','fc'],court:['bk','divorce']
-  };
-  const docTypes={
-    foreclosure:['Notice of Trustee Sale','Substitute Trustee Notice','Foreclosure Posting','Sheriff Sale Notice'],
-    lien:['Tax Lien','IRS Federal Tax Lien','Mechanic\'s Lien','HOA Assessment Lien','Judgment Lien'],
-    deed:['Warranty Deed','Quitclaim Deed','Special Warranty Deed','Deed of Trust','Transfer on Death Deed'],
-    probate:['Probate Case Filing','Affidavit of Heirship','Letters Testamentary','Will Filed'],
-    lispendens:['Lis Pendens','Notice of Pending Suit'],
-    court:['Bankruptcy Ch. 7','Bankruptcy Ch. 13','Divorce Case Filing','Eviction (FED)','Civil Lawsuit']
-  };
+function applyFilters() {
+  state.filtered = state.leads.filter(matches);
+  sortFiltered();
+  renderTable();
+  renderKPIs();
+  renderMap();
+}
 
-  LIVE = [];
-  for(let i=0;i<520;i++){
-    const cat=pick(CATS.filter(c=>c!=='tax'));
-    const dt=docTypes[cat]?pick(docTypes[cat]):'Unknown Doc Type';
-    const addr=rnd(100,9999)+' '+pick(streets);
-    const city=pick(cities);
-    const d=new Date(Date.now()-rnd(0,30)*86400000);
-    const isNew=(Date.now()-d.getTime())<7*86400000;
-    const owner=pick(ln)+' '+pick(fn);
-    const baseFlags=msMap[cat]||[];
-    const extraFlags=[];
-    if(Math.random()>.75) extraFlags.push('absentee');
-    if(Math.random()>.82) extraFlags.push('vacant');
-    if(Math.random()>.85) extraFlags.push('llc');
-    const flags=[...new Set([...baseFlags,...extraFlags])];
-    const score=calcScore(flags);
-    const amt=['foreclosure','lien','lispendens'].includes(cat)?rnd(2000,150000):null;
-    LIVE.push({
-      id:'DEMO-'+i,address:addr,city,zip:'782'+rnd(10,99),owner,
-      category:cat,docType:dt,date:d.toISOString(),
-      amount:amt,score,msFlags:flags,isNew,
-      source:'publicsearch',docNum:'BC-'+rnd(100000,999999)
+function sortFiltered() {
+  const { key, dir } = state.sort;
+  state.filtered.sort((a,b) => {
+    let av = a[key], bv = b[key];
+    if (key === "signals") { av = (a.signals||[]).length; bv = (b.signals||[]).length; }
+    if (av == null) av = "";
+    if (bv == null) bv = "";
+    if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
+    return ((+av||0) - (+bv||0)) * dir;
+  });
+}
+
+$$("#tbl thead th").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.sort;
+    if (!k) return;
+    if (state.sort.key === k) state.sort.dir = -state.sort.dir;
+    else { state.sort.key = k; state.sort.dir = -1; }
+    $$("#tbl thead th").forEach(x => x.classList.remove("sorted"));
+    th.classList.add("sorted");
+    th.querySelector(".sort-arrow").textContent = state.sort.dir === -1 ? "▼" : "▲";
+    sortFiltered();
+    renderTable();
+  });
+});
+
+/* ============================================================
+   Table render
+   ============================================================ */
+function renderTable() {
+  const body = $("#tbody");
+  const max = 500; // virtualized cap
+  const rows = state.filtered.slice(0, max);
+  body.innerHTML = rows.map(l => {
+    const sigTags = (l.signals||[]).slice(0,3).map(s =>
+      `<span class="signal-tag">${s.type||""}</span>`).join("");
+    const stackTag = (l.signal_count||0) >= 2
+      ? `<span class="signal-tag stack">×${l.signal_count}</span>` : "";
+    const pct = Math.min(100, Math.round((l.score||0)/200*100));
+    return `
+      <tr data-id="${l._id}" ${state.selectedId === l._id ? 'class="selected"' : ''}>
+        <td>
+          <span class="score-bar"><span style="width:${pct}%"></span></span>
+          <strong>${l.score||0}</strong>
+        </td>
+        <td><span class="county-pill ${l.county}">${l.county?.[0]||"?"}</span></td>
+        <td>${stackTag || '<span style="color:var(--text-muted)">1</span>'}</td>
+        <td><span class="signal-tags">${sigTags}</span></td>
+        <td>${l.site_address || '<em style="color:var(--text-muted)">no site address</em>'}<br/>
+            <span style="color:var(--text-muted);font-size:10px">${l.site_city||""} ${l.site_zip||""}</span></td>
+        <td>${(l.owner||"—").slice(0,28)}</td>
+        <td>${fmtM(l.equity_est)}</td>
+        <td>${l.year_built || "—"}</td>
+      </tr>`;
+  }).join("");
+  $("#foot-count").textContent = `${state.filtered.length.toLocaleString()} leads shown${state.filtered.length > max ? " (top 500 rendered)" : ""}`;
+
+  $$("#tbody tr").forEach(tr => {
+    tr.addEventListener("click", () => {
+      state.selectedId = +tr.dataset.id;
+      renderTable();
+      renderDetail();
     });
-  }
-  psData=[...LIVE];
-  updateTopStats();
-  updateCatCounts();
-}
-
-// ─── FORECLOSURE RENDER ───────────────────────────────────────────────────────
-function applyFc(){
-  const s=document.getElementById('fc-srch').value.toLowerCase();
-  const t=document.getElementById('fc-type').value;
-  filteredFC=FC_DATA.filter(r=>{
-    if(s&&!r.address.toLowerCase().includes(s))return false;
-    if(t&&r.type!==t)return false;
-    return true;
-  });
-  renderFC();
-}
-
-function renderFC(){
-  const tbody=document.getElementById('fc-tbody');
-  const empty=document.getElementById('fc-empty');
-  document.getElementById('fc-total').textContent=filteredFC.length;
-  document.getElementById('fc-mort').textContent=filteredFC.filter(r=>r.type==='Mortgage').length;
-  document.getElementById('fc-tax').textContent=filteredFC.filter(r=>r.type==='Tax').length;
-  if(!filteredFC.length){empty.style.display='block';tbody.innerHTML='';return;}
-  empty.style.display='none';
-  tbody.innerHTML=filteredFC.map(r=>`<tr>
-    <td><b>${r.address}</b></td>
-    <td><span class="badge ${r.type==='Tax'?'b-g':'b-r'}">${r.type}</span></td>
-    <td style="font-size:10px;color:var(--text2)">${r.docNum}</td>
-    <td style="font-size:11px">${r.saleDate?fmtShort(r.saleDate):'—'}</td>
-    <td style="font-weight:600">${fmt$(r.amount)}</td>
-    <td style="font-size:10px">${r.atty}</td>
-    <td><div style="display:flex;gap:4px">
-      <button class="btn" style="height:22px;font-size:10px;padding:0 6px" onclick="openLink('https://bexar.tx.publicsearch.us/search/advanced')">Records</button>
-      <button class="btn" style="height:22px;font-size:10px;padding:0 6px" onclick="openLink('https://bexar.acttax.com/act_webdev/bexar/index.jsp')">Tax</button>
-    </div></td>
-  </tr>`).join('');
-}
-
-// ─── LIVE FEED ────────────────────────────────────────────────────────────────
-function applyF(){
-  const search=document.getElementById('live-srch').value.toLowerCase();
-  const sortV=document.getElementById('live-sort').value;
-  const city=document.getElementById('live-city').value;
-  const amtMin=parseFloat(document.getElementById('amt-min').value)||0;
-  const amtMax=parseFloat(document.getElementById('amt-max').value)||Infinity;
-  const scoreMin=parseInt(document.getElementById('score-slide').value)||0;
-  const activeCats=CATS.filter(c=>document.getElementById('f-'+c)?.checked);
-  const msActive=['taxdel','fc','probate','lispendens','bk','divorce','multilien','judgment','absentee','vacant','llc','newonly'].filter(m=>document.getElementById('ms-'+m)?.checked);
-
-  filteredLive=LIVE.filter(r=>{
-    if(!activeCats.includes(r.category))return false;
-    if(search&&!r.address.toLowerCase().includes(search)&&!(r.owner||'').toLowerCase().includes(search)&&!(r.docType||'').toLowerCase().includes(search))return false;
-    if(city&&r.city!==city)return false;
-    if(r.score<scoreMin)return false;
-    if(r.amount&&r.amount<amtMin)return false;
-    if(r.amount&&r.amount>amtMax)return false;
-    if(msActive.length>0&&!msActive.every(m=>r.msFlags&&r.msFlags.includes(m)))return false;
-    return true;
-  });
-
-  filteredLive.sort((a,b)=>{
-    if(sortV==='score')return b.score-a.score;
-    if(sortV==='date-d')return new Date(b.date||0)-new Date(a.date||0);
-    if(sortV==='date-a')return new Date(a.date||0)-new Date(b.date||0);
-    if(sortV==='amt')return (b.amount||0)-(a.amount||0);
-    return b.score-a.score;
-  });
-
-  lPage=1;renderLive();updateLiveStats();
-}
-
-function setSort(col){if(sortCol===col)sortDir*=-1;else{sortCol=col;sortDir=-1;}applyF();}
-
-function renderLive(){
-  const tbody=document.getElementById('live-tbody');
-  const empty=document.getElementById('live-empty');
-  const total=filteredLive.length;
-  const totalPg=Math.max(1,Math.ceil(total/PS));
-  if(lPage>totalPg)lPage=totalPg;
-  const start=(lPage-1)*PS;
-  const slice=filteredLive.slice(start,start+PS);
-
-  document.getElementById('l-pg').textContent='Page '+lPage+' of '+totalPg;
-  document.getElementById('l-info').textContent=(start+1)+'–'+Math.min(start+PS,total)+' of '+total.toLocaleString();
-  document.getElementById('l-prev').disabled=lPage<=1;
-  document.getElementById('l-next').disabled=lPage>=totalPg;
-  empty.style.display=total===0?'block':'none';
-
-  tbody.innerHTML=slice.map((r,i)=>{
-    const sc=r.score;
-    const sfCls=sc>=80?'hot-f':sc>=55?'warm-f':'cool-f';
-    const scCls=sc>=80?'red':sc>=55?'amb':'grn';
-    const flags=(r.msFlags||[]).slice(0,6).map(f=>`<span class="flag-dot" style="background:${MS_COLORS[f]||'#999'}" title="${MS_LABELS[f]||f}"></span>`).join('');
-    const extra=r.msFlags&&r.msFlags.length>6?`<span style="font-size:9px;color:var(--text3)">+${r.msFlags.length-6}</span>`:'';
-    const catBadge=CAT_BADGE[r.category]||'b-gr';
-    return`<tr onclick="openDetail(${start+i})" class="${sc>=80?'hot':''}">
-      <td><b>${r.address||'—'}</b><br><span style="font-size:10px;color:var(--text2)">${r.city||''} ${r.zip||''}${r.isNew?'<span class="badge b-new" style="margin-left:4px">NEW</span>':''}</span></td>
-      <td style="font-size:11px">${r.owner||'—'}</td>
-      <td><span class="badge ${catBadge}">${r.category||'—'}</span></td>
-      <td style="font-size:11px">${(r.docType||'—').slice(0,22)}</td>
-      <td style="font-size:11px">${fmtShort(r.date)}</td>
-      <td style="font-size:11px;font-weight:${r.amount?'700':'400'}">${fmt$(r.amount)}</td>
-      <td><div class="sw"><div class="sb2"><div class="sf ${sfCls}" style="width:${sc}%"></div></div><span style="font-size:11px;font-weight:700" class="${scCls}">${sc}</span></div></td>
-      <td><div class="flags">${flags}${extra}</div></td>
-    </tr>`;
-  }).join('');
-}
-
-function updateLiveStats(){
-  const total=filteredLive.length;
-  const hot=filteredLive.filter(r=>r.score>=80).length;
-  const avg=total?Math.round(filteredLive.reduce((s,r)=>s+r.score,0)/total):0;
-  const newC=filteredLive.filter(r=>r.isNew).length;
-  const exp=filteredLive.reduce((s,r)=>s+(r.amount||0),0);
-  document.getElementById('ls-total').textContent=total.toLocaleString();
-  document.getElementById('ls-hot').textContent=hot;
-  document.getElementById('ls-avg').textContent=avg;
-  document.getElementById('ls-new').textContent=newC;
-  document.getElementById('ls-exp').textContent=exp>0?'$'+Math.round(exp/1000)+'k':'—';
-}
-
-function updateTopStats(){
-  const hot=LIVE.filter(r=>r.score>=80).length;
-  const avg=LIVE.length?Math.round(LIVE.reduce((s,r)=>s+r.score,0)/LIVE.length):0;
-  document.getElementById('tb-total').textContent=LIVE.length.toLocaleString();
-  document.getElementById('tb-hot').textContent=hot;
-  document.getElementById('tb-avg').textContent=avg;
-}
-
-function updateCatCounts(){
-  CATS.forEach(c=>{
-    const el=document.getElementById('c-'+c);
-    if(el) el.textContent=LIVE.filter(r=>r.category===c).length;
   });
 }
 
-function lPg(d){const tp=Math.max(1,Math.ceil(filteredLive.length/PS));lPage=Math.max(1,Math.min(tp,lPage+d));renderLive();}
-
-// ─── DETAIL PANEL ─────────────────────────────────────────────────────────────
-function openDetail(idx){
-  const r=filteredLive[idx];if(!r)return;
-  const dp=document.getElementById('detail-panel');
-  const body=document.getElementById('dp-body');
-  const sc=r.score;
-  const scColor=sc>=80?'var(--danger)':sc>=55?'var(--warn)':'var(--success)';
-  const flags=(r.msFlags||[]).map(f=>`<div class="sig"><span class="sig-d" style="background:${MS_COLORS[f]||'#999'}"></span>${MS_LABELS[f]||f}</div>`).join('');
-  body.innerHTML=`
-    <div class="dp-s">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-        <div style="width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;border:2px solid ${scColor};color:${scColor}">${sc}</div>
-        <div><div style="font-weight:700;font-size:13px">Seller score</div><div style="font-size:11px;color:var(--text2)">${sc>=80?'Hot lead — act fast':sc>=55?'Warm lead — worth pursuing':'Moderate — monitor'}</div></div>
-      </div>
-      <h4>Property</h4>
-      <div class="dp-r"><span class="k">Address</span><span class="v">${r.address||'—'}</span></div>
-      <div class="dp-r"><span class="k">City / Zip</span><span class="v">${r.city||'—'}, TX ${r.zip||'—'}</span></div>
-    </div>
-    <div class="dp-s">
-      <h4>Owner</h4>
-      <div class="dp-r"><span class="k">Name</span><span class="v">${r.owner||'—'}</span></div>
-      <div class="dp-r"><span class="k">Doc #</span><span class="v">${r.docNum||r.caseNum||'—'}</span></div>
-    </div>
-    <div class="dp-s">
-      <h4>Filing</h4>
-      <div class="dp-r"><span class="k">Category</span><span class="v"><span class="badge ${CAT_BADGE[r.category]||'b-gr'}">${r.category}</span></span></div>
-      <div class="dp-r"><span class="k">Doc type</span><span class="v">${r.docType||'—'}</span></div>
-      <div class="dp-r"><span class="k">Filed</span><span class="v">${fmtD(r.date)}</span></div>
-      <div class="dp-r"><span class="k">Source</span><span class="v">bexar.tx.publicsearch.us</span></div>
-      ${r.amount?`<div class="dp-r"><span class="k">Amt due</span><span class="v" style="font-size:15px;color:var(--danger)">${fmt$(r.amount)}</span></div>`:''}
-    </div>
-    <div class="dp-s">
-      <h4>Motivated seller signals (${(r.msFlags||[]).length})</h4>
-      <div class="sig-list">${flags||'<div style="font-size:12px;color:var(--text2)">No signals detected</div>'}</div>
-    </div>
-    <div class="dp-acts">
-      <a class="dp-btn prim" href="https://bexar.tx.publicsearch.us/search/advanced" target="_blank">Search public records ↗</a>
-      <a class="dp-btn accent" href="https://bexar.acttax.com/act_webdev/bexar/index.jsp" target="_blank">Look up tax record ↗</a>
-      <a class="dp-btn" href="https://maps.bexar.org/foreclosures/" target="_blank">View foreclosure map ↗</a>
-      <button class="dp-btn" onclick="switchView('deal')">Run deal analysis</button>
-      <button class="dp-btn" onclick="buildStack();switchView('stack')">Add to stack</button>
-    </div>`;
-  dp.classList.add('open');
-}
-function closeDetail(){document.getElementById('detail-panel').classList.remove('open');}
-
-// ─── TAX DATA ─────────────────────────────────────────────────────────────────
-function handleUpload(e){
-  const f=e.target.files[0];if(!f)return;
-  const msg=document.getElementById('up-msg');
-  msg.textContent='Reading '+f.name+'…';
-  const reader=new FileReader();
-  reader.onload=function(ev){
-    try{
-      const wb=XLSX.read(ev.target.result,{type:'binary'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws);
-      TAX_DATA=rows.map(r=>({
-        account:r.ACCOUNT||r.account||'',
-        address:(r.PROPERTYADDRESS||r.address||'').toString().toUpperCase(),
-        city:r.PROPERTYCITY||r.city||'San Antonio',
-        owner:[(r.LASTNAME||''),(r.FIRSTNAME||'')].filter(Boolean).join(' ')||(r.OWNER||'Unknown'),
-        tag:r.Tag||r.TAG||'INDIVIDUAL',
-        classCode:r.ClassCode||r.CLASSCODE||'SINGLE FAMILY RES',
-        delinqYear:r.DelinquentYear||r.DELINQUENTYEAR||0,
-        totalDue:parseFloat(r.TOT_AMT_DUE||r.TOTAL_DUE||0),
-        homestead:r.HOMESTEAD||r.homestead||''
-      }));
-      filteredTax=[...TAX_DATA];
-      renderTax();
-      updateTaxStats();
-      msg.textContent='✓ '+f.name+' loaded ('+TAX_DATA.length.toLocaleString()+' records)';
-      document.getElementById('c-tax').textContent=TAX_DATA.length;
-
-      // Merge into LIVE as tax records
-      const taxRecs=TAX_DATA.slice(0,2000).map((r,i)=>{
-        const flags=['taxdel'];
-        if(r.tag==='ESTATE')flags.push('probate');
-        if(r.tag==='LLC OWNER')flags.push('llc');
-        return{
-          id:'TAX-'+i,address:r.address,city:r.city,zip:'',owner:r.owner,
-          category:'tax',docType:'Tax Delinquent',date:r.delinqYear+'-01-01',
-          amount:r.totalDue,score:calcScore(flags),msFlags:flags,isNew:r.delinqYear>=2024,
-          source:'upload',docNum:String(r.account)
-        };
-      });
-      LIVE=[...LIVE.filter(r=>r.source!=='upload'),...taxRecs];
-      updateTopStats();updateCatCounts();applyF();
-    }catch(err){
-      msg.textContent='Error reading file: '+err.message;
-    }
-  };
-  reader.readAsBinaryString(f);
+/* ============================================================
+   KPIs
+   ============================================================ */
+function renderKPIs() {
+  const f = state.filtered;
+  $("#kpi-total").textContent = f.length.toLocaleString();
+  $("#kpi-mar").textContent   = f.filter(x => x.county === "Maricopa").length.toLocaleString();
+  $("#kpi-pima").textContent  = f.filter(x => x.county === "Pima").length.toLocaleString();
+  $("#kpi-stacked").textContent = f.filter(x => (x.signal_count||0) >= 2).length.toLocaleString();
 }
 
-function applyTax(){
-  const s=document.getElementById('tax-srch').value.toLowerCase();
-  const yr=document.getElementById('tax-yr').value;
-  const cls=document.getElementById('tax-cls').value;
-  const tag=document.getElementById('tax-tag').value;
-  filteredTax=TAX_DATA.filter(r=>{
-    if(s&&!r.address.toLowerCase().includes(s)&&!r.owner.toLowerCase().includes(s))return false;
-    if(yr&&String(r.delinqYear)!==yr)return false;
-    if(cls&&r.classCode!==cls)return false;
-    if(tag&&r.tag!==tag)return false;
-    return true;
-  });
-  tPage=1;renderTax();updateTaxStats();
-}
-
-function renderTax(){
-  const tbody=document.getElementById('tax-tbody');
-  const empty=document.getElementById('tax-empty');
-  if(!TAX_DATA.length){empty.style.display='block';tbody.innerHTML='';return;}
-  empty.style.display='none';
-  const total=filteredTax.length;
-  const totalPg=Math.max(1,Math.ceil(total/TPS));
-  if(tPage>totalPg)tPage=totalPg;
-  const start=(tPage-1)*TPS;
-  const slice=filteredTax.slice(start,start+TPS);
-  document.getElementById('t-pg').textContent='Page '+tPage+' of '+totalPg;
-  document.getElementById('t-info').textContent=(start+1)+'–'+Math.min(start+TPS,total)+' of '+total.toLocaleString();
-  document.getElementById('t-prev').disabled=tPage<=1;
-  document.getElementById('t-next').disabled=tPage>=totalPg;
-  const tagCls={ESTATE:'b-p','LLC OWNER':'b-b',TRUST:'b-t'};
-  tbody.innerHTML=slice.map(r=>`<tr onclick="openLink('https://bexar.acttax.com/act_webdev/bexar/index.jsp')">
-    <td style="font-size:10px;color:var(--text2)">${r.account}</td>
-    <td><b>${r.address}</b></td>
-    <td style="font-size:11px">${r.city}</td>
-    <td style="font-size:11px">${r.owner}</td>
-    <td><span class="badge ${tagCls[r.tag]||'b-gr'}">${r.tag}</span></td>
-    <td style="font-size:10px;color:var(--text2)">${(r.classCode||'').slice(0,18)}</td>
-    <td style="font-size:11px">${r.delinqYear}</td>
-    <td style="font-weight:700;${r.totalDue>50000?'color:var(--danger)':r.totalDue>10000?'color:var(--warn)':''}">${fmt$(r.totalDue)}</td>
-  </tr>`).join('');
-}
-
-function updateTaxStats(){
-  const t=filteredTax;const total=t.length;
-  const due=t.reduce((s,r)=>s+r.totalDue,0);
-  document.getElementById('t-total').textContent=total.toLocaleString();
-  document.getElementById('t-due').textContent=total?'$'+Math.round(due/1000000).toFixed(1)+'M':'—';
-  document.getElementById('t-avg').textContent=total?'$'+Math.round(due/total).toLocaleString():'—';
-  document.getElementById('t-hs').textContent=t.filter(r=>r.homestead==='Y').length.toLocaleString();
-  document.getElementById('t-est').textContent=t.filter(r=>r.tag==='ESTATE').length.toLocaleString();
-}
-
-function tPg(d){const tp=Math.max(1,Math.ceil(filteredTax.length/TPS));tPage=Math.max(1,Math.min(tp,tPage+d));renderTax();}
-
-// ─── PUBLIC RECORDS (from Vercel) ─────────────────────────────────────────────
-function applyPS(){
-  const s=document.getElementById('ps-srch').value.toLowerCase();
-  const cat=document.getElementById('ps-cat').value;
-  const days=parseInt(document.getElementById('ps-days').value)||0;
-  filteredPS=psData.filter(r=>{
-    if(s&&!r.address.toLowerCase().includes(s)&&!(r.owner||'').toLowerCase().includes(s))return false;
-    if(cat&&r.category!==cat)return false;
-    if(days>0&&!isWithinDays(r.date,days))return false;
-    return true;
-  });
-  psPage=1;renderPS();
-  document.getElementById('ps-total').textContent=filteredPS.length.toLocaleString();
-  document.getElementById('ps-fc').textContent=filteredPS.filter(r=>r.category==='foreclosure'||r.category==='lispendens').length;
-  document.getElementById('ps-lien').textContent=filteredPS.filter(r=>r.category==='lien').length;
-  document.getElementById('ps-prob').textContent=filteredPS.filter(r=>r.category==='probate').length;
-}
-
-function renderPS(){
-  const tbody=document.getElementById('ps-tbody');
-  const empty=document.getElementById('ps-empty');
-  const total=filteredPS.length;
-  if(!total){empty.style.display='block';tbody.innerHTML='';return;}
-  empty.style.display='none';
-  const totalPg=Math.max(1,Math.ceil(total/PS));
-  if(psPage>totalPg)psPage=totalPg;
-  const start=(psPage-1)*PS;
-  const slice=filteredPS.slice(start,start+PS);
-  document.getElementById('ps-pg').textContent='Page '+psPage+' of '+totalPg;
-  document.getElementById('ps-info').textContent=(start+1)+'–'+Math.min(start+PS,total)+' of '+total.toLocaleString();
-  document.getElementById('ps-prev').disabled=psPage<=1;
-  document.getElementById('ps-next').disabled=psPage>=totalPg;
-  tbody.innerHTML=slice.map(r=>`<tr onclick="openLink('https://bexar.tx.publicsearch.us/doc/${r.docNum||''}')">
-    <td><b>${r.address||'—'}</b>${r.isNew?'<span class="badge b-new" style="margin-left:4px">NEW</span>':''}</td>
-    <td style="font-size:11px">${r.owner||'—'}</td>
-    <td><span class="badge ${CAT_BADGE[r.category]||'b-gr'}">${r.category||'—'}</span></td>
-    <td style="font-size:11px">${(r.docType||'—').slice(0,22)}</td>
-    <td style="font-size:11px">${fmtShort(r.date)}</td>
-    <td style="font-size:10px;color:var(--text2)">${r.docNum||'—'}</td>
-    <td><div class="sw"><div class="sb2"><div class="sf ${r.score>=80?'hot-f':r.score>=55?'warm-f':'cool-f'}" style="width:${r.score}%"></div></div><span style="font-size:11px;font-weight:700">${r.score}</span></div></td>
-    <td><a href="https://bexar.tx.publicsearch.us/doc/${r.docNum||''}" target="_blank" class="btn" style="height:22px;font-size:10px;padding:0 6px">View ↗</a></td>
-  </tr>`).join('');
-}
-
-function psPg(d){const tp=Math.max(1,Math.ceil(filteredPS.length/PS));psPage=Math.max(1,Math.min(tp,psPage+d));renderPS();}
-
-// ─── STACK ────────────────────────────────────────────────────────────────────
-function buildStack(){
-  const addrMap={};
-  [...LIVE,...psData].forEach(r=>{
-    const key=r.address;
-    if(!key||key==='ADDRESS NOT PROVIDED')return;
-    if(!addrMap[key])addrMap[key]={address:r.address,city:r.city||'',zip:r.zip||'',signals:[],totalAmt:0,msFlags:new Set(),categories:new Set()};
-    addrMap[key].signals.push(r);
-    addrMap[key].totalAmt+=(r.amount||0);
-    (r.msFlags||[]).forEach(f=>addrMap[key].msFlags.add(f));
-    addrMap[key].categories.add(r.category);
-  });
-  TAX_DATA.forEach(r=>{
-    const key=r.address;if(!key)return;
-    if(!addrMap[key])addrMap[key]={address:r.address,city:r.city||'',zip:'',signals:[],totalAmt:0,msFlags:new Set(),categories:new Set()};
-    addrMap[key].totalAmt+=r.totalDue;
-    addrMap[key].msFlags.add('taxdel');
-    if(r.tag==='ESTATE')addrMap[key].msFlags.add('probate');
-    if(r.tag==='LLC OWNER')addrMap[key].msFlags.add('llc');
-    addrMap[key].categories.add('tax');
-    addrMap[key].signals.push({category:'tax',docType:'Tax Delinquent',amount:r.totalDue,date:r.delinqYear+'-01-01'});
-  });
-  FC_DATA.forEach(r=>{
-    const key=r.address;if(!key)return;
-    if(!addrMap[key])addrMap[key]={address:r.address,city:'San Antonio',zip:'',signals:[],totalAmt:0,msFlags:new Set(),categories:new Set()};
-    addrMap[key].totalAmt+=r.amount||0;
-    addrMap[key].msFlags.add('fc');
-    addrMap[key].categories.add('foreclosure');
-    addrMap[key].signals.push({category:'foreclosure',docType:'Foreclosure Notice',amount:r.amount,date:r.saleDate});
-  });
-  stackData=Object.values(addrMap)
-    .map(p=>{
-      const flags=[...p.msFlags];
-      const score=Math.min(100,calcScore(flags)+(p.signals.length>2?10:0)+(p.categories.size>2?8:0));
-      return{...p,msFlags:flags,score,categories:[...p.categories]};
-    })
-    .filter(p=>p.signals.length>=2)
-    .sort((a,b)=>b.score-a.score);
-  renderStack();
-}
-
-function renderStack(){
-  const minScore=parseInt(document.getElementById('stk-min').value)||0;
-  const shown=stackData.filter(p=>p.score>=minScore).slice(0,60);
-  const cont=document.getElementById('stk-content');
-  if(!shown.length){cont.innerHTML='<div class="empty">No properties match. Lower the score filter or build the stack first.</div>';return;}
-  const scColor=s=>s>=80?'var(--danger)':s>=60?'var(--warn)':'var(--success)';
-  const cls=s=>s>=80?'ultra':s>=60?'high':'med';
-  cont.innerHTML=shown.map(p=>`
-    <div class="stk-card ${cls(p.score)}" onclick="openLink('https://bexar.tx.publicsearch.us/search/advanced')">
-      <div class="stk-top">
-        <div>
-          <div style="font-weight:700;font-size:13px">${p.address}</div>
-          <div style="font-size:11px;color:var(--text2);margin-top:2px">${p.city}, TX</div>
-        </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div class="stk-score" style="color:${scColor(p.score)}">${p.score}</div>
-          <div style="font-size:10px;color:var(--text2)">seller score</div>
-        </div>
-      </div>
-      <div class="stk-badges">
-        ${[...new Set(p.categories)].map(c=>`<span class="badge ${CAT_BADGE[c]||'b-gr'}">${c}</span>`).join('')}
-        ${p.msFlags.slice(0,4).map(f=>`<span class="badge b-a">${MS_LABELS[f]||f}</span>`).join('')}
-        ${p.msFlags.length>4?`<span class="badge b-gr">+${p.msFlags.length-4} more</span>`:''}
-      </div>
-      <div class="stk-ft">
-        <span>${p.signals.length} signals · ${p.categories.length} sources</span>
-        <span>Exposure: ${p.totalAmt>0?fmt$(p.totalAmt):'—'}</span>
-      </div>
-    </div>
-  `).join('');
-}
-
-// ─── DEAL ANALYZER ───────────────────────────────────────────────────────────
-function calcDeal(){
-  const arv=parseFloat(document.getElementById('d-arv').value)||0;
-  const rep=parseFloat(document.getElementById('d-rep').value)||0;
-  const price=parseFloat(document.getElementById('d-price').value)||0;
-  const tax=parseFloat(document.getElementById('d-tax').value)||0;
-  const liens=parseFloat(document.getElementById('d-liens').value)||0;
-  const hold=parseFloat(document.getElementById('d-hold').value)||0;
-  const mo=parseFloat(document.getElementById('d-mo').value)||0;
-  const close=parseFloat(document.getElementById('d-close').value)||0;
-  const agent=parseFloat(document.getElementById('d-agent').value)||0;
-  const wf=parseFloat(document.getElementById('d-wf').value)||0;
-  const strat=document.getElementById('d-strat').value;
-  const pct={flip:.70,wholesale:.65,rental:.75}[strat]||.70;
-  const holdTotal=hold*mo;
-  const mao=Math.round((arv*pct)-rep-tax-liens-close-agent-wf-holdTotal);
-  const allIn=price+rep+tax+liens+close+agent+wf+holdTotal;
-  const profit=arv-allIn;
-  const roi=allIn>0?((profit/allIn)*100):0;
-  document.getElementById('d-mao').textContent=fmt$(mao);
-  document.getElementById('d-mao').style.color=mao>=price?'var(--success)':'var(--danger)';
-  document.getElementById('d-profit').textContent=fmt$(profit);
-  document.getElementById('d-profit').style.color=profit>0?'var(--success)':'var(--danger)';
-  document.getElementById('d-roi').textContent=roi.toFixed(1)+'%';
-  document.getElementById('d-roi').style.color=roi>15?'var(--success)':roi>0?'var(--warn)':'var(--danger)';
-  const vd=document.getElementById('deal-verdict');
-  vd.style.display='block';
-  if(price<=mao&&profit>0&&roi>15){vd.className='verdict go';vd.textContent='✓ Deal looks good — purchase price is within MAO and ROI exceeds 15%';}
-  else if(price<=mao&&profit>0){vd.className='verdict caution';vd.textContent='⚠ Proceed with caution — ROI is positive but below 15% target';}
-  else{vd.className='verdict stop';vd.textContent='✗ Stop — purchase price exceeds MAO or deal is unprofitable at current inputs';}
-  const rows=[
-    ['Purchase price',fmt$(price)],['Repairs',fmt$(rep)],['Delinquent taxes',fmt$(tax)],
-    ['Other liens',fmt$(liens)],['Closing costs',fmt$(close)],['Agent fees',fmt$(agent)],
-    ['Wholesale fee',fmt$(wf)],['Holding ('+mo+' mo)',fmt$(holdTotal)],
-    ['Total all-in cost',fmt$(allIn)],['ARV',fmt$(arv)],['Net profit',fmt$(profit)]
-  ];
-  document.getElementById('d-bdt').innerHTML=rows.map(([k,v])=>`<tr><td style="color:var(--text2)">${k}</td><td style="text-align:right">${v}</td></tr>`).join('');
-}
-
-// ─── EXPORTS ──────────────────────────────────────────────────────────────────
-function csvExport(){
-  const hdr=['ID','Address','City','Owner','Category','Doc Type','Filed','Amt Due','Seller Score','MS Flags','Source'];
-  const rows=filteredLive.map(r=>[r.id,r.address,r.city,r.owner,r.category,r.docType,fmtD(r.date),r.amount||'',r.score,(r.msFlags||[]).join('|'),r.source]);
-  dlCSV([hdr,...rows],'bexar_live_'+today()+'.csv');
-}
-function csvTax(){
-  const hdr=['Account','Address','City','Owner','Tag','Class','Del Year','Total Due','Homestead'];
-  const rows=filteredTax.map(r=>[r.account,r.address,r.city,r.owner,r.tag,r.classCode,r.delinqYear,r.totalDue,r.homestead||'']);
-  dlCSV([hdr,...rows],'bexar_tax_'+today()+'.csv');
-}
-function csvStack(){
-  if(!stackData.length)buildStack();
-  const hdr=['Address','City','Score','Signals','Categories','MS Flags','Total Exposure'];
-  const rows=stackData.slice(0,200).map(p=>[p.address,p.city,p.score,p.signals.length,p.categories.join('|'),p.msFlags.join('|'),p.totalAmt||'']);
-  dlCSV([hdr,...rows],'bexar_stack_'+today()+'.csv');
-}
-function csvPS(){
-  const hdr=['Address','Owner','Category','Doc Type','Filed','Doc #','Score','MS Flags'];
-  const rows=filteredPS.map(r=>[r.address,r.owner,r.category,r.docType,fmtD(r.date),r.docNum,r.score,(r.msFlags||[]).join('|')]);
-  dlCSV([hdr,...rows],'bexar_pubrecords_'+today()+'.csv');
-}
-function dlCSV(rows,name){
-  const csv=rows.map(r=>r.map(v=>'"'+String(v||'').replace(/"/g,'""')+'"').join(',')).join('\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=name;a.click();
-}
-function today(){return new Date().toISOString().slice(0,10);}
-
-function buildMailList(){
-  if(!stackData.length)buildStack();
-  const top=stackData.slice(0,25);
-  const out=document.getElementById('mail-out');
-  if(!top.length){out.textContent='Build the stack first.';return;}
-  const lines=top.map((p,i)=>`${i+1}. ${p.address}, ${p.city}, TX  |  Score: ${p.score}  |  ${p.msFlags.slice(0,3).map(f=>MS_LABELS[f]).join(', ')}`);
-  out.innerHTML='<pre style="font-size:11px;line-height:1.8;overflow-x:auto;background:var(--bg2);padding:10px;border-radius:var(--r);border:1px solid var(--border)">'+lines.join('\n')+'</pre>';
-}
-
-// ─── REFRESH / TRIGGER SCRAPE ─────────────────────────────────────────────────
-async function triggerScrape(){
-  if(!VERCEL_URL){
-    showNotify('warn','Paste your Vercel project URL into the VERCEL_URL variable at the top of the JavaScript to enable manual refresh. See deployment guide.');
+/* ============================================================
+   Detail panel + calculator
+   ============================================================ */
+function renderDetail() {
+  const l = state.leads.find(x => x._id === state.selectedId);
+  const el = $("#detail");
+  if (!l) {
+    el.innerHTML = '<div class="empty-detail">Select a lead to view details and run deal math</div>';
     return;
   }
-  const btn=document.getElementById('refresh-btn');
-  btn.textContent='Fetching…';btn.disabled=true;
-  try{
-    const res=await fetch(VERCEL_URL+'/api/scrape',{method:'GET'});
-    const data=await res.json();
-    if(data.success){
-      showNotify('success',`Scrape complete — ${data.totalRecords} records fetched. Reloading data…`);
-      setTimeout(loadLiveData,2000);
-    }else{
-      showNotify('warn','Scrape returned an error. Check Vercel function logs.');
-    }
-  }catch(e){
-    showNotify('warn','Could not reach Vercel function: '+e.message);
-  }finally{
-    btn.textContent='↻ Refresh Now';btn.disabled=false;
+  el.innerHTML = `
+    <h2>${l.site_address || "—"}</h2>
+    <div class="sub">${l.site_city || ""} ${l.site_zip || ""} · <span class="county-pill ${l.county}">${l.county}</span></div>
+
+    <div class="section">
+      <h4>Score ${l.score||0}</h4>
+      <div class="kv">
+        <span class="k">Signals</span><span class="v">+${l.score_parts?.signals||0}</span>
+        <span class="k">Flags</span><span class="v">+${l.score_parts?.flags||0}</span>
+        <span class="k">Stack bonus</span><span class="v">+${l.score_parts?.stack||0}</span>
+        <span class="k">Equity bonus</span><span class="v">+${l.score_parts?.equity||0}</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h4>Property</h4>
+      <div class="kv">
+        <span class="k">APN</span><span class="v">${l.apn||"—"}</span>
+        <span class="k">Use</span><span class="v">${l.use_desc||"—"}</span>
+        <span class="k">Year built</span><span class="v">${l.year_built||"—"}</span>
+        <span class="k">Living sqft</span><span class="v">${fmt(l.living_sqft)}</span>
+        <span class="k">Lot sqft</span><span class="v">${fmt(l.lot_sqft)}</span>
+        <span class="k">Beds / Baths</span><span class="v">${l.bedrooms||"—"} / ${l.bathrooms||"—"}</span>
+        <span class="k">FCV</span><span class="v">${fmtM(l.fcv)}</span>
+        <span class="k">Last sale</span><span class="v">${l.last_sale_date||"—"} · ${fmtM(l.last_sale_price)}</span>
+        <span class="k">Equity est.</span><span class="v" style="color:var(--ok)">${fmtM(l.equity_est)}</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h4>Owner</h4>
+      <div class="kv">
+        <span class="k">Name</span><span class="v">${l.owner||"—"}</span>
+        ${l.owner_2 ? `<span class="k">Co-owner</span><span class="v">${l.owner_2}</span>` : ""}
+        <span class="k">Mailing</span><span class="v">${l.mail_address||"—"}</span>
+        <span class="k">City/State</span><span class="v">${l.mail_city||""} ${l.mail_state||""} ${l.mail_zip||""}</span>
+        ${l.absentee ? '<span class="k">Flag</span><span class="v" style="color:var(--warn)">Absentee</span>' : ""}
+        ${l.out_of_state ? '<span class="k">Flag</span><span class="v" style="color:var(--warn)">Out of state</span>' : ""}
+      </div>
+    </div>
+
+    <div class="section">
+      <h4>Signals (${l.signal_count||0})</h4>
+      <ul class="sig-list">
+        ${(l.signals||[]).map(s => `
+          <li>
+            <span class="st">${s.type}</span>
+            <span class="dt">${s.date||""}</span>
+            ${s.doc_url ? `<br/><a href="${s.doc_url}" target="_blank" rel="noopener">view document →</a>` : ""}
+          </li>
+        `).join("")}
+      </ul>
+    </div>
+
+    <div class="section">
+      <h4>Deal Calculator</h4>
+      <div class="calc-modes">
+        <div class="calc-mode active" data-mode="wholesale">Wholesale</div>
+        <div class="calc-mode" data-mode="flip">Fix & Flip</div>
+        <div class="calc-mode" data-mode="brrrr">BRRRR</div>
+        <div class="calc-mode" data-mode="subto">Sub-To</div>
+        <div class="calc-mode" data-mode="novation">Novation</div>
+        <div class="calc-mode" data-mode="owner">Seller Finance</div>
+      </div>
+      <div id="calc-body"></div>
+    </div>
+  `;
+  renderCalc(l);
+
+  // focus map marker
+  if (window._latlon && window._latlon[l._id]) {
+    const { lat, lon } = window._latlon[l._id];
+    state.map.flyTo([lat, lon], 16, { duration: 0.5 });
   }
+
+  $$(".calc-mode").forEach(m => m.addEventListener("click", () => {
+    state.calcMode = m.dataset.mode;
+    $$(".calc-mode").forEach(x => x.classList.remove("active"));
+    m.classList.add("active");
+    renderCalc(l);
+  }));
 }
 
-// ─── UI HELPERS ───────────────────────────────────────────────────────────────
-function toggleSb(id){
-  const el=document.getElementById(id);
-  const ar=document.getElementById('a-'+id.replace('sb-',''));
-  if(!el)return;
-  const h=el.style.display==='none';
-  el.style.display=h?'':'none';
-  if(ar)ar.textContent=h?'▾':'▸';
+/* ============================================================
+   Six-mode calculator
+   ============================================================ */
+function renderCalc(l) {
+  const arv = l.fcv ? Math.round(l.fcv * 1.05) : 250000; // default ARV guess
+  const sqft = l.living_sqft || 1500;
+  const repairs = sqft * 25;    // default $25/sqft
+  const body = $("#calc-body");
+
+  const modes = {
+    wholesale: `
+      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
+      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
+      <div class="calc-row"><label>MAO %</label><input id="c-mao" value="0.70" /></div>
+      <div class="calc-row"><label>Assignment Fee</label><input id="c-fee" value="10000" /></div>
+    `,
+    flip: `
+      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
+      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
+      <div class="calc-row"><label>MAO %</label><input id="c-mao" value="0.75" /></div>
+      <div class="calc-row"><label>Holding (mo)</label><input id="c-hold" value="6" /></div>
+      <div class="calc-row"><label>Hold $/mo</label><input id="c-holdcost" value="2000" /></div>
+      <div class="calc-row"><label>Profit target</label><input id="c-profit" value="30000" /></div>
+    `,
+    brrrr: `
+      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
+      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
+      <div class="calc-row"><label>Refi LTV</label><input id="c-ltv" value="0.75" /></div>
+      <div class="calc-row"><label>Rent (mo)</label><input id="c-rent" value="${Math.round(sqft*1.2)}" /></div>
+    `,
+    subto: `
+      <div class="calc-row"><label>Existing balance</label><input id="c-bal" value="${Math.round((l.last_sale_price||arv*0.6))}" /></div>
+      <div class="calc-row"><label>Interest rate</label><input id="c-rate" value="0.045" /></div>
+      <div class="calc-row"><label>P&I (mo)</label><input id="c-pi" value="1500" /></div>
+      <div class="calc-row"><label>Seller cash</label><input id="c-sc" value="5000" /></div>
+      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
+    `,
+    novation: `
+      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
+      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
+      <div class="calc-row"><label>Agreed w/ seller</label><input id="c-agreed" value="${Math.round(arv*0.85)}" /></div>
+      <div class="calc-row"><label>Sale commission</label><input id="c-comm" value="0.06" /></div>
+    `,
+    owner: `
+      <div class="calc-row"><label>Purchase price</label><input id="c-pur" value="${Math.round(arv*0.9)}" /></div>
+      <div class="calc-row"><label>Down payment</label><input id="c-down" value="10000" /></div>
+      <div class="calc-row"><label>Interest rate</label><input id="c-rate" value="0.06" /></div>
+      <div class="calc-row"><label>Amort (yrs)</label><input id="c-yrs" value="30" /></div>
+    `,
+  };
+  body.innerHTML = modes[state.calcMode] + `
+    <div class="calc-result">
+      <div class="label" id="c-label">MAO</div>
+      <div class="main" id="c-value">—</div>
+      <div style="font-size:10px; color:var(--text-muted); margin-top:4px" id="c-detail"></div>
+    </div>
+  `;
+  const compute = () => {
+    const v = id => +(($("#"+id)?.value)||0);
+    const label = $("#c-label"), val = $("#c-value"), det = $("#c-detail");
+    switch (state.calcMode) {
+      case "wholesale": {
+        const mao = v("c-arv") * v("c-mao") - v("c-rep") - v("c-fee");
+        label.textContent = "MAX OFFER TO SELLER";
+        val.textContent = fmtM(mao);
+        det.textContent = `ARV×${v("c-mao")} – repairs – ${fmt(v("c-fee"))} fee`;
+        break;
+      }
+      case "flip": {
+        const mao = v("c-arv") * v("c-mao") - v("c-rep") - v("c-hold")*v("c-holdcost") - v("c-profit");
+        label.textContent = "MAX ACQUISITION";
+        val.textContent = fmtM(mao);
+        det.textContent = `Target profit ${fmtM(v("c-profit"))} after repairs + ${v("c-hold")} mo holding`;
+        break;
+      }
+      case "brrrr": {
+        const refi = v("c-arv") * v("c-ltv");
+        const allIn = v("c-arv") * 0.70 + v("c-rep"); // buy+repair target
+        const pulled = refi - allIn;
+        label.textContent = "CASH PULLED AT REFI";
+        val.textContent = fmtM(pulled);
+        det.textContent = `Refi ${fmtM(refi)} – all-in ${fmtM(allIn)} · rent ${fmtM(v("c-rent"))}/mo`;
+        break;
+      }
+      case "subto": {
+        const spread = v("c-arv") - v("c-bal") - v("c-sc");
+        label.textContent = "EQUITY SPREAD";
+        val.textContent = fmtM(spread);
+        det.textContent = `Take loan ${fmtM(v("c-bal"))} @ ${(v("c-rate")*100).toFixed(2)}% · P&I ${fmtM(v("c-pi"))}/mo · ${fmtM(v("c-sc"))} to seller`;
+        break;
+      }
+      case "novation": {
+        const net = v("c-arv") - v("c-agreed") - v("c-rep") - v("c-arv")*v("c-comm");
+        label.textContent = "NOVATION NET";
+        val.textContent = fmtM(net);
+        det.textContent = `List at ARV, pay seller ${fmtM(v("c-agreed"))}, absorb commission ${(v("c-comm")*100).toFixed(1)}%`;
+        break;
+      }
+      case "owner": {
+        const principal = v("c-pur") - v("c-down");
+        const r = v("c-rate")/12;
+        const n = v("c-yrs")*12;
+        const pmt = r ? principal * r / (1 - Math.pow(1+r, -n)) : principal/n;
+        label.textContent = "MONTHLY P&I TO SELLER";
+        val.textContent = fmtM(pmt);
+        det.textContent = `Financed ${fmtM(principal)} @ ${(v("c-rate")*100).toFixed(2)}% over ${v("c-yrs")} yrs`;
+        break;
+      }
+    }
+  };
+  body.addEventListener("input", compute);
+  compute();
 }
 
-function switchView(v){
-  ['live','fc','tax','pubsearch','stack','deal','export'].forEach(id=>{
-    document.getElementById('view-'+id).classList.toggle('active',id===v);
-    document.getElementById('tab-'+id).classList.toggle('active',id===v);
+/* ============================================================
+   Map
+   ============================================================ */
+function initMap() {
+  state.map = L.map("map", { zoomControl: true }).setView([33.45, -112.07], 9);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    subdomains: "abcd",
+    maxZoom: 19,
+    attribution: "© OSM © CARTO"
+  }).addTo(state.map);
+  state.markers = L.layerGroup().addTo(state.map);
+  renderMap();
+}
+
+function renderMap() {
+  if (!state.map || typeof L === "undefined") return;
+  state.markers.clearLayers();
+  window._latlon = {};
+  // Simple zip-centroid approximation for points without true lat/lon.
+  // (If you add geometry to the parcel scrape, swap this out for real coords.)
+  let bounds = [];
+  for (const l of state.filtered.slice(0, 500)) {
+    const ll = approximateLatLon(l);
+    if (!ll) continue;
+    window._latlon[l._id] = ll;
+    const color = l.county === "Maricopa" ? "#3c8ec9" : "#c97d3c";
+    const m = L.circleMarker([ll.lat, ll.lon], {
+      radius: 3 + Math.min(7, (l.score||0)/30),
+      color, fillColor: color, fillOpacity: 0.75, weight: 1,
+    }).bindPopup(`
+      <strong>${l.site_address||""}</strong><br/>
+      ${l.site_city||""} ${l.site_zip||""}<br/>
+      Score: <b>${l.score||0}</b> · ${l.signal_count||1} signal(s)
+    `);
+    m.on("click", () => { state.selectedId = l._id; renderTable(); renderDetail(); });
+    state.markers.addLayer(m);
+    bounds.push([ll.lat, ll.lon]);
+  }
+  if (bounds.length > 5) state.map.fitBounds(bounds, { padding: [20,20], maxZoom: 11 });
+}
+
+/* Rough zip -> lat/lon centroid bag — good enough for map clustering until you
+   add true geometry to the parcel scrape. Add more as needed. */
+const ZIP_CENTROIDS = {
+  // Phoenix metro
+  "85001":[33.4488,-112.0740],"85003":[33.4517,-112.0801],"85004":[33.4534,-112.0700],
+  "85006":[33.4668,-112.0509],"85007":[33.4517,-112.0890],"85008":[33.4625,-112.0317],
+  "85009":[33.4520,-112.0985],"85013":[33.5111,-112.0783],"85015":[33.5098,-112.0852],
+  "85016":[33.5138,-112.0422],"85017":[33.5152,-112.0957],"85018":[33.5006,-111.9998],
+  "85019":[33.5154,-112.1156],"85020":[33.5568,-112.0691],"85021":[33.5594,-112.0884],
+  "85022":[33.6127,-112.0494],"85023":[33.6324,-112.0886],"85024":[33.6760,-112.0651],
+  "85027":[33.6689,-112.0959],"85028":[33.5896,-112.0132],"85029":[33.5819,-112.1195],
+  "85032":[33.6170,-112.0283],"85033":[33.4786,-112.2182],"85037":[33.4810,-112.2579],
+  "85040":[33.3911,-112.0432],"85041":[33.3803,-112.0934],"85042":[33.3707,-112.0376],
+  "85043":[33.3958,-112.1762],"85044":[33.3403,-112.0368],"85045":[33.3063,-112.1050],
+  "85048":[33.3147,-112.0454],"85051":[33.5594,-112.1225],"85053":[33.6324,-112.1225],
+  "85054":[33.6552,-111.9517],"85083":[33.7376,-112.1495],"85085":[33.7517,-112.0776],
+  "85086":[33.8428,-112.1321],
+  // Scottsdale / Paradise Valley
+  "85250":[33.5244,-111.9014],"85251":[33.4920,-111.9273],"85253":[33.5292,-111.9605],
+  "85254":[33.6160,-111.9900],"85255":[33.6677,-111.8775],"85257":[33.4689,-111.9296],
+  "85258":[33.5641,-111.8987],"85259":[33.5819,-111.8353],"85260":[33.5965,-111.8784],
+  "85262":[33.7868,-111.8088],"85266":[33.7817,-111.8808],
+  // Mesa / Gilbert / Chandler / Tempe
+  "85201":[33.4346,-111.8368],"85202":[33.3963,-111.8752],"85203":[33.4480,-111.8075],
+  "85204":[33.4128,-111.7934],"85205":[33.4376,-111.7401],"85206":[33.4221,-111.7158],
+  "85207":[33.4546,-111.6540],"85208":[33.3926,-111.6908],"85209":[33.3859,-111.6440],
+  "85210":[33.3948,-111.8454],"85212":[33.3459,-111.6400],"85213":[33.4456,-111.7624],
+  "85215":[33.4869,-111.6737],"85233":[33.3531,-111.7974],"85234":[33.3686,-111.7512],
+  "85295":[33.3080,-111.7366],"85296":[33.3354,-111.7545],"85297":[33.2833,-111.7410],
+  "85298":[33.2493,-111.7405],"85224":[33.3169,-111.8715],"85225":[33.3113,-111.8278],
+  "85226":[33.3232,-111.9291],"85248":[33.2586,-111.8679],"85249":[33.2471,-111.8284],
+  "85281":[33.4237,-111.9298],"85282":[33.3956,-111.9313],"85283":[33.3715,-111.9311],
+  "85284":[33.3478,-111.9369],
+  // Glendale / Peoria / Surprise
+  "85301":[33.5386,-112.1859],"85302":[33.5676,-112.1766],"85303":[33.5392,-112.2069],
+  "85304":[33.5822,-112.1800],"85305":[33.5411,-112.2345],"85306":[33.6160,-112.1782],
+  "85308":[33.6506,-112.1834],"85310":[33.6712,-112.1450],"85345":[33.5852,-112.2500],
+  "85381":[33.5875,-112.2454],"85382":[33.6496,-112.2377],"85383":[33.7109,-112.2318],
+  "85392":[33.5280,-112.3169],"85395":[33.5188,-112.3681],"85374":[33.6336,-112.3676],
+  "85375":[33.6556,-112.3810],"85378":[33.6295,-112.3317],"85379":[33.6140,-112.3760],
+  "85387":[33.7005,-112.4230],"85388":[33.6510,-112.4308],
+  // Tucson metro (Pima)
+  "85701":[32.2217,-110.9683],"85704":[32.3236,-110.9746],"85705":[32.2766,-110.9791],
+  "85706":[32.1566,-110.9491],"85708":[32.1700,-110.8667],"85710":[32.2214,-110.8299],
+  "85711":[32.2141,-110.8924],"85712":[32.2548,-110.8898],"85713":[32.1894,-110.9657],
+  "85714":[32.1831,-110.9455],"85715":[32.2546,-110.8296],"85716":[32.2459,-110.9237],
+  "85718":[32.3080,-110.9168],"85719":[32.2439,-110.9422],"85730":[32.1949,-110.7878],
+  "85735":[32.1490,-111.1920],"85736":[31.9630,-111.3600],"85737":[32.4200,-110.9500],
+  "85739":[32.5075,-110.8855],"85741":[32.3247,-111.0244],"85742":[32.3551,-111.0547],
+  "85743":[32.3500,-111.1200],"85745":[32.2315,-111.0207],"85746":[32.1589,-111.0269],
+  "85747":[32.1437,-110.7711],"85748":[32.2103,-110.7780],"85749":[32.2600,-110.7500],
+  "85750":[32.2700,-110.8300],"85755":[32.4369,-110.9600],"85756":[32.0930,-110.8870],
+  "85757":[32.1568,-111.0984],"85629":[31.9598,-110.9750],"85614":[31.8900,-110.9800],
+  "85641":[32.0480,-110.6610],"85658":[32.4200,-111.0800],"85653":[32.4338,-111.2247],
+  "85735":[32.1490,-111.1920],
+};
+
+function approximateLatLon(lead) {
+  const z = (lead.site_zip || "").slice(0,5);
+  if (ZIP_CENTROIDS[z]) {
+    const [lat, lon] = ZIP_CENTROIDS[z];
+    // small jitter so markers in same zip don't stack
+    return { lat: lat + (Math.random()-0.5)*0.01, lon: lon + (Math.random()-0.5)*0.01 };
+  }
+  return null;
+}
+
+/* ============================================================
+   Export (client-side)
+   ============================================================ */
+function toCSV(rows, cols) {
+  const esc = v => {
+    if (v == null) return "";
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const head = cols.map(c => c.label).join(",");
+  const body = rows.map(r => cols.map(c => esc(c.get(r))).join(",")).join("\n");
+  return head + "\n" + body;
+}
+
+function download(filename, content) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function splitOwner(full) {
+  if (!full) return ["",""];
+  const s = full.trim();
+  if (/TRUST|LLC|INC|LTD/i.test(s)) return ["", s];
+  if (s.includes(",")) {
+    const [last, rest] = s.split(",");
+    const first = (rest||"").trim().split(/\s+/)[0]||"";
+    return [first, last.trim()];
+  }
+  const p = s.split(/\s+/);
+  if (p.length === 1) return ["", p[0]];
+  return [p.slice(0,-1).join(" "), p[p.length-1]];
+}
+
+$("#btn-skip").addEventListener("click", () => {
+  const cols = [
+    { label: "Owner First",      get: l => splitOwner(l.owner)[0] },
+    { label: "Owner Last",       get: l => splitOwner(l.owner)[1] },
+    { label: "Mailing Address",  get: l => l.mail_address || "" },
+    { label: "Mailing City",     get: l => l.mail_city || "" },
+    { label: "Mailing State",    get: l => l.mail_state || "" },
+    { label: "Mailing Zip",      get: l => l.mail_zip || "" },
+    { label: "Property Address", get: l => l.site_address || "" },
+    { label: "Property City",    get: l => l.site_city || "" },
+    { label: "Property State",   get: l => "AZ" },
+    { label: "Property Zip",     get: l => l.site_zip || "" },
+    { label: "APN",              get: l => l.apn || "" },
+    { label: "County",           get: l => l.county || "" },
+  ];
+  download("skiptrace.csv", toCSV(state.filtered, cols));
+});
+
+$("#btn-ghl").addEventListener("click", () => {
+  const cols = [
+    { label: "First Name",       get: l => splitOwner(l.owner)[0] },
+    { label: "Last Name",        get: l => splitOwner(l.owner)[1] },
+    { label: "Phone",            get: _ => "" },
+    { label: "Email",            get: _ => "" },
+    { label: "Address Line 1",   get: l => l.mail_address || l.site_address || "" },
+    { label: "City",             get: l => l.mail_city || l.site_city || "" },
+    { label: "State",            get: l => l.mail_state || "AZ" },
+    { label: "Postal Code",      get: l => l.mail_zip || l.site_zip || "" },
+    { label: "Source",           get: _ => "Maricopa/Pima Intel" },
+    { label: "Tags",             get: l => {
+      const t = [l.county, ...(l.signals||[]).map(s=>s.type)];
+      if (l.absentee) t.push("Absentee");
+      if (l.out_of_state) t.push("Out of State");
+      return t.filter(Boolean).join(", ");
+    }},
+    { label: "APN",              get: l => l.apn || "" },
+    { label: "County",           get: l => l.county || "" },
+    { label: "Signals",          get: l => (l.signals||[]).map(s=>s.type).join(" + ") },
+    { label: "Score",            get: l => l.score||0 },
+    { label: "Equity Est",       get: l => l.equity_est||0 },
+    { label: "Property Address", get: l => l.site_address || "" },
+    { label: "Property City",    get: l => l.site_city || "" },
+    { label: "Property Zip",     get: l => l.site_zip || "" },
+  ];
+  download("ghl.csv", toCSV(state.filtered, cols));
+});
+
+$("#btn-json").addEventListener("click", () => {
+  const json = JSON.stringify(state.filtered, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "leads-filtered.json";
+  document.body.appendChild(a); a.click(); a.remove();
+});
+
+/* ============================================================
+   Tax Roll Import — client-side CSV cleaner + column mapper
+   ============================================================ */
+
+// Canonical output schema — matches what the user asked for
+const TAXROLL_SCHEMA = [
+  { key: "first_name",       label: "First Name",      required: false,
+    hints: ["first", "fname", "firstname", "first name", "owner first"] },
+  { key: "last_name",        label: "Last Name",       required: true,
+    hints: ["last", "lname", "lastname", "last name", "owner last", "owner name", "owner", "taxpayer", "name"] },
+  { key: "property_address", label: "Property Address",required: true,
+    hints: ["property address", "site address", "situs", "physical address", "property addr", "situs addr", "prop addr"] },
+  { key: "property_city",    label: "Property City",   required: false,
+    hints: ["property city", "site city", "situs city", "physical city", "prop city", "city"] },
+  { key: "property_state",   label: "Property State",  required: false,
+    hints: ["property state", "site state", "situs state", "prop state", "state"] },
+  { key: "property_zip",     label: "Property Zip",    required: false,
+    hints: ["property zip", "site zip", "situs zip", "physical zip", "prop zip", "zip"] },
+  { key: "mailing_address",  label: "Mailing Address", required: true,
+    hints: ["mailing address", "mail address", "owner address", "mail addr", "owner addr", "address1", "mail_addr1"] },
+  { key: "mailing_city",     label: "Mailing City",    required: false,
+    hints: ["mailing city", "mail city", "owner city"] },
+  { key: "mailing_state",    label: "Mailing State",   required: false,
+    hints: ["mailing state", "mail state", "owner state"] },
+  { key: "mailing_zip",      label: "Mailing Zip",     required: false,
+    hints: ["mailing zip", "mail zip", "owner zip"] },
+  { key: "apn",              label: "APN / Parcel",    required: true,
+    hints: ["apn", "parcel", "parcel number", "parcel no", "parcel_id", "parcelid", "parcel num", "taxcode"] },
+  { key: "amount_owed",      label: "Amount Owed",     required: false,
+    hints: ["amount owed", "amount", "total due", "balance", "tax due", "delinquent", "delinquent tax", "owed", "total"] },
+];
+
+const uploadState = {
+  raw: null,          // parsed raw rows from PapaParse
+  headers: [],        // source CSV headers
+  mapping: {},        // target_key -> source_header
+  cleaned: [],        // normalized rows after mapping
+};
+
+function normalizeHeader(h) {
+  return (h||"").toString().toLowerCase().replace(/[_\-.]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function autoMap(headers) {
+  const mapping = {};
+  const normHeaders = headers.map(h => ({ raw: h, norm: normalizeHeader(h) }));
+  for (const target of TAXROLL_SCHEMA) {
+    // Score each source header against the target's hints
+    let best = null, bestScore = 0;
+    for (const h of normHeaders) {
+      let score = 0;
+      for (const hint of target.hints) {
+        if (h.norm === hint) { score = 100; break; }
+        if (h.norm.includes(hint)) { score = Math.max(score, 50 + hint.length); }
+        if (hint.includes(h.norm) && h.norm.length > 3) { score = Math.max(score, 30 + h.norm.length); }
+      }
+      if (score > bestScore) { best = h.raw; bestScore = score; }
+    }
+    if (best && bestScore >= 40) mapping[target.key] = best;
+  }
+  return mapping;
+}
+
+function splitOwnerName(raw) {
+  if (!raw) return { first: "", last: "" };
+  const s = raw.toString().trim();
+  if (/TRUST|LLC|INC|LTD|CORP|PROPERTIES|HOLDINGS|ESTATE\s+OF/i.test(s)) {
+    return { first: "", last: s };
+  }
+  if (s.includes(",")) {
+    const [last, rest] = s.split(",");
+    const parts = (rest||"").trim().split(/\s+/);
+    return { first: parts[0] || "", last: last.trim() };
+  }
+  const parts = s.split(/\s+/);
+  if (parts.length === 1) return { first: "", last: parts[0] };
+  return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
+}
+
+function parseAmount(v) {
+  if (v == null) return 0;
+  const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+  return isFinite(n) ? n : 0;
+}
+
+function applyMapping() {
+  const m = uploadState.mapping;
+  const out = [];
+  for (const row of uploadState.raw) {
+    const get = (k) => m[k] ? (row[m[k]] || "").toString().trim() : "";
+    let first = get("first_name");
+    let last  = get("last_name");
+    // If no first_name column but last_name has a full name, split it
+    if (!first && last) {
+      const split = splitOwnerName(last);
+      first = split.first; last = split.last;
+    }
+    out.push({
+      first_name:       first,
+      last_name:        last,
+      property_address: get("property_address"),
+      property_city:    get("property_city"),
+      property_state:   get("property_state") || "AZ",
+      property_zip:     get("property_zip"),
+      mailing_address:  get("mailing_address"),
+      mailing_city:     get("mailing_city"),
+      mailing_state:    get("mailing_state"),
+      mailing_zip:      get("mailing_zip"),
+      apn:              get("apn"),
+      amount_owed:      parseAmount(get("amount_owed")),
+    });
+  }
+  uploadState.cleaned = out;
+  renderPreview();
+}
+
+function renderMappingUI() {
+  const grid = $("#mapping-grid");
+  grid.innerHTML = "";
+  const headers = ["", ...uploadState.headers];
+  for (const target of TAXROLL_SCHEMA) {
+    const label = document.createElement("div");
+    label.className = "target" + (target.required ? " required" : "");
+    label.innerHTML = target.label + (target.required ? ' <span style="font-size:9px">*</span>' : "");
+
+    const sel = document.createElement("select");
+    sel.dataset.target = target.key;
+    for (const h of headers) {
+      const opt = document.createElement("option");
+      opt.value = h; opt.textContent = h || "(unmapped)";
+      if (h === uploadState.mapping[target.key]) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.addEventListener("change", () => {
+      uploadState.mapping[target.key] = sel.value || null;
+      applyMapping();
+      updateMatchIndicators();
+    });
+
+    const ind = document.createElement("div");
+    ind.className = "match-ind";
+    ind.dataset.target = target.key;
+    ind.textContent = uploadState.mapping[target.key] ? "✓ matched" : "—";
+    if (uploadState.mapping[target.key]) ind.classList.add("matched");
+
+    grid.appendChild(label);
+    grid.appendChild(sel);
+    grid.appendChild(ind);
+  }
+  $("#mapping").classList.add("visible");
+}
+
+function updateMatchIndicators() {
+  $$("#mapping-grid .match-ind").forEach(el => {
+    const k = el.dataset.target;
+    if (uploadState.mapping[k]) { el.textContent = "✓ matched"; el.classList.add("matched"); }
+    else { el.textContent = "—"; el.classList.remove("matched"); }
   });
-  if(v==='stack'&&!stackData.length)buildStack();
 }
 
-function showNotify(type,msg){
-  const el=document.getElementById('notify');
-  const txt=document.getElementById('notify-txt');
-  el.className='notify '+type;
-  txt.textContent=msg;
-  el.classList.remove('hidden');
-  setTimeout(()=>el.classList.add('hidden'),8000);
+function renderPreview() {
+  const rows = uploadState.cleaned.slice(0, 50);
+  const cols = TAXROLL_SCHEMA.map(s => s.key);
+  const head = `<tr>${TAXROLL_SCHEMA.map(s => `<th>${s.label}</th>`).join("")}</tr>`;
+  const body = rows.map(r =>
+    `<tr>${cols.map(c => `<td>${(r[c]||"").toString().slice(0, 60)}</td>`).join("")}</tr>`
+  ).join("");
+  $("#preview-thead").innerHTML = head;
+  $("#preview-tbody").innerHTML = body;
+  // stats
+  $("#stat-rows").textContent = uploadState.cleaned.length.toLocaleString();
+  $("#stat-apn").textContent  = uploadState.cleaned.filter(r => r.apn).length.toLocaleString();
+  $("#stat-mail").textContent = uploadState.cleaned.filter(r => r.mailing_address).length.toLocaleString();
+  const owed = uploadState.cleaned.reduce((s, r) => s + (r.amount_owed || 0), 0);
+  $("#stat-owed").textContent = "$" + Math.round(owed).toLocaleString();
+  $("#preview").classList.add("visible");
+  $("#upload-download").style.display = "inline-block";
+  $("#upload-merge").style.display    = "inline-block";
+  $("#upload-clear").style.display    = "inline-block";
 }
 
-function resetAll(){
-  CATS.forEach(c=>{const el=document.getElementById('f-'+c);if(el)el.checked=true;});
-  ['taxdel','fc','probate','lispendens','bk','divorce','multilien','judgment','absentee','vacant','llc','newonly'].forEach(m=>{const el=document.getElementById('ms-'+m);if(el)el.checked=false;});
-  document.getElementById('live-srch').value='';
-  document.getElementById('amt-min').value='';
-  document.getElementById('amt-max').value='';
-  document.getElementById('score-slide').value='0';
-  document.getElementById('score-v').textContent='0';
-  document.getElementById('live-city').value='';
-  applyF();
+function handleFile(file) {
+  if (!file) return;
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    dynamicTyping: false,
+    complete: (res) => {
+      uploadState.raw     = res.data;
+      uploadState.headers = res.meta.fields || [];
+      uploadState.mapping = autoMap(uploadState.headers);
+      renderMappingUI();
+      applyMapping();
+    },
+    error: (err) => {
+      alert("Could not parse that file: " + err.message);
+    }
+  });
 }
 
-function openLink(u){const a=document.createElement('a');a.href=u;a.target='_blank';a.click();}
+// Wire uploader buttons
+$("#btn-upload").addEventListener("click", () => {
+  $("#upload-modal").classList.add("open");
+});
+$("#upload-close").addEventListener("click", () => {
+  $("#upload-modal").classList.remove("open");
+});
+$("#upload-clear").addEventListener("click", () => {
+  uploadState.raw = null; uploadState.cleaned = [];
+  $("#mapping").classList.remove("visible");
+  $("#preview").classList.remove("visible");
+  $("#upload-download").style.display = "none";
+  $("#upload-merge").style.display    = "none";
+  $("#upload-clear").style.display    = "none";
+  $("#file-input").value = "";
+});
+
+// Dropzone behavior
+const dz = $("#dropzone");
+dz.addEventListener("click", () => $("#file-input").click());
+dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("dragging"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("dragging"));
+dz.addEventListener("drop", (e) => {
+  e.preventDefault(); dz.classList.remove("dragging");
+  handleFile(e.dataTransfer.files[0]);
+});
+$("#file-input").addEventListener("change", (e) => handleFile(e.target.files[0]));
+
+// Download clean CSV
+$("#upload-download").addEventListener("click", () => {
+  const cols = TAXROLL_SCHEMA.map(s => ({ label: s.label, get: r => r[s.key] }));
+  download("tax_roll_cleaned.csv", toCSV(uploadState.cleaned, cols));
+});
+
+// Merge as Tax Delinquent signal into leads
+$("#upload-merge").addEventListener("click", () => {
+  const county = $("#upload-county").value;
+  const rows = uploadState.cleaned.filter(r => r.apn);
+  if (rows.length === 0) {
+    alert("No rows with APN — can't merge. Leads are keyed by APN.");
+    return;
+  }
+  // Build an APN -> amount_owed map
+  const apnMap = {};
+  for (const r of rows) {
+    const apn = (r.apn || "").replace(/[^A-Z0-9]/gi, "").toUpperCase();
+    if (apn) apnMap[apn] = r;
+  }
+  // For each existing lead, if its APN is in the import, inject a Tax Delinquent signal
+  let hits = 0;
+  for (const lead of state.leads) {
+    const norm = (lead.apn_norm || lead.apn || "").replace(/[^A-Z0-9]/gi, "").toUpperCase();
+    if (apnMap[norm]) {
+      const r = apnMap[norm];
+      // Skip if already has a Tax Delinquent signal (don't duplicate)
+      if (!(lead.signals||[]).some(s => s.type === "Tax Delinquent")) {
+        lead.signals = lead.signals || [];
+        lead.signals.push({
+          type:    "Tax Delinquent",
+          doc_code:"TD-IMPORT",
+          date:    new Date().toISOString().slice(0,10),
+          grantor: lead.owner,
+          grantee: null,
+          amount_owed: r.amount_owed || 0,
+        });
+        lead.signal_count = lead.signals.length;
+        lead.score = (lead.score || 0) + 40;  // Tax Delinquent base weight
+        if (lead.signal_count >= 2) lead.score += 10;  // stack bonus
+        hits++;
+      }
+    }
+  }
+  alert(`Merged ${hits} tax delinquent signals into existing leads.\n\n${rows.length - hits} rows had APNs not in the current parcel master (probably parcels outside Maricopa/Pima, or APNs in a format we didn't recognize).`);
+  applyFilters();
+  $("#upload-modal").classList.remove("open");
+});
+
+/* ============================================================
+   Go
+   ============================================================ */
+loadData();
 </script>
 </body>
 </html>
