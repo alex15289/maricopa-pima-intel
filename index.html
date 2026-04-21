@@ -313,24 +313,34 @@
 
   /* Quick Lists tile strip */
   .quicklists-strip {
-    display:flex; gap:8px; padding:12px 18px; background:var(--bg-panel);
+    display:flex !important; gap:8px; padding:12px 18px; background:var(--bg-panel);
     border-bottom:1px solid var(--border); overflow-x:auto;
+    min-height:76px; align-items:center;
   }
   .ql-tile {
     flex:0 0 auto; min-width:140px; padding:10px 14px;
     border:1px solid var(--border); border-radius:6px; background:var(--bg-elev);
     cursor:pointer; transition:all .12s ease;
-    display:flex; flex-direction:column; gap:2px;
+    display:flex !important; flex-direction:column !important; gap:2px;
+    min-height:52px;
   }
   .ql-tile:hover { border-color:var(--accent); transform:translateY(-1px); }
   .ql-tile.active {
     background:var(--accent-soft); border-color:var(--accent);
     box-shadow:0 0 0 1px var(--accent);
   }
-  .ql-tile .ql-icon { font-size:16px; }
-  .ql-tile .ql-label { font-size:11px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text); }
+  .ql-tile .ql-icon {
+    font-size:16px !important; display:block !important;
+    line-height:1.2 !important; color:var(--text) !important;
+  }
+  .ql-tile .ql-label {
+    font-size:11px !important; font-weight:700; letter-spacing:0.04em;
+    text-transform:uppercase; color:var(--text) !important;
+    display:block !important; line-height:1.3 !important;
+  }
   .ql-tile .ql-count {
-    font-family:"Fraunces",serif; font-size:16px; color:var(--accent);
+    font-family:"Fraunces",serif; font-size:16px !important;
+    color:var(--accent) !important; display:block !important; line-height:1.2 !important;
   }
   .ql-tile.new-leads .ql-icon { animation: newpulse 1.8s ease-in-out infinite; }
   @keyframes newpulse { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
