@@ -25,7 +25,7 @@ import json
 import logging
 import re
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -48,44 +48,72 @@ log = logging.getLogger("pipeline")
 # -----------------------------------------------------------------------------
 # Scoring weights
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Scoring weights  (v2 — wholesaler-tuned, Oct 2026)
+# -----------------------------------------------------------------------------
+# Philosophy: weights reflect *close-rate* in wholesaler terms.
+#   Pre-foreclosure & probate are the highest-converting cold calls in the
+#   wholesaler playbook; tax delinquent is close behind. Absentee + high
+#   equity is the classic "tired landlord" combo that needs stacking, not
+#   individual weight.
 SIGNAL_WEIGHTS = {
-    # External recorded signals — highest value
-    "Notice of Trustee Sale":  55,
-    "Lis Pendens":             35,
-    "Affidavit of Death":      50,
-    "Affidavit":               10,
-    "Federal Tax Lien":        30,
-    "State Tax Lien":          25,
-    "Mechanics Lien":          20,
-    "HOA Lien":                15,
-    "Tax Delinquent":          40,
-    "Code Violation":          20,
-    "Probate Case":            45,
-    "Judgment Lien":           25,
-    "Bankruptcy":              30,
-    "Divorce":                 25,
+    # Foreclosure family — phone-today level of distress
+    "Notice of Trustee Sale":  75,   # ↑ from 55 — 60-90 day auction deadline
+    "Sheriffs Deed":           60,   # post-foreclosure REO
+
+    # Estate / probate family — cash-inheritance motivation
+    "Affidavit of Death":      65,   # ↑ from 50
+    "Probate Case":            60,   # ↑ from 45
+    "Affidavit":               15,
+
+    # Tax / government liens — clock is ticking
+    "Tax Delinquent":          55,   # ↑ from 40
+    "Federal Tax Lien":        40,   # ↑ from 30
+    "State Tax Lien":          30,   # ↑ from 25
+    "Medicaid Lien":           30,   # Pima AHCCCS
+    "City Lien":               25,
+    "HOA Lien":                20,
+
+    # Legal pressure — bringing a buyer = exit strategy
+    "Lis Pendens":             45,   # ↑ from 35
+    "Judgment Lien":           30,
+    "Bankruptcy":              40,   # ↑ from 30
+    "Bankruptcy Discharge":    30,
+    "Divorce":                 30,
+
+    # Physical distress
+    "Mechanics Lien":          25,
+    "Code Violation":          30,   # ↑ from 20 — violation = tired owner
+    "Hospital Lien":           18,
 }
 
-# Original owner-name / parcel flags (legacy v1 flags)
+# Original owner-name / parcel flags — tuned up for Pima's flag-only leads
 LEGACY_FLAG_WEIGHTS = {
-    "flag_estate_owner":       40,
-    "flag_entity_owner":       -5,
-    "flag_trust_only":         15,
-    "flag_likely_vacant":      30,
-    "flag_absentee":           12,
-    "flag_out_of_state":       15,
-    "flag_long_hold":           8,
+    "flag_estate_owner":       50,   # ↑ from 40 — "EST OF"/"ESTATE OF" = gold
+    "flag_entity_owner":       -3,   # LLCs are harder to reach but reachable
+    "flag_trust_only":         20,   # ↑ from 15
+    "flag_likely_vacant":      40,   # ↑ from 30
+    "flag_absentee":           18,   # ↑ from 12
+    "flag_out_of_state":       22,   # ↑ from 15 — harder to maintain remotely
+    "flag_long_hold":          12,   # ↑ from 8  — 15+ yr holds = equity-rich
 }
 
 # Stacking bonus per additional signal on same APN
-STACK_BONUS = 10
+STACK_BONUS = 15   # ↑ from 10
 
-# Equity bonuses
+# Combo multipliers — the wholesaler playbook is about stacked signals
+# Absentee + OOS + high equity = canonical "tired OOS landlord" — worth extra
+COMBO_BONUS_TIRED_OOS_LANDLORD = 25      # absentee + OOS + equity>=200k
+COMBO_BONUS_ESTATE_LONG_HOLD    = 30     # estate + long hold (inherited property sitting)
+COMBO_BONUS_PROBATE_HIGH_EQUITY = 35     # probate filing + equity>=300k
+
+# Equity bonuses — more granular for the high end
 EQUITY_BRACKETS = [
-    (500_000, 40),
-    (300_000, 30),
-    (150_000, 20),
-    (50_000, 10),
+    (1_000_000, 55),
+    (500_000,   45),   # ↑ from 40
+    (300_000,   35),   # ↑ from 30
+    (150_000,   22),   # ↑ from 20
+    (50_000,    10),
 ]
 
 
@@ -194,10 +222,127 @@ def load_signals(path: Path, signal_type: str = None) -> list:
 
 
 # -----------------------------------------------------------------------------
+# Call script angle composer
+# -----------------------------------------------------------------------------
+def _compose_call_angle(legacy_flags: dict, enrichment_flags: dict,
+                        signals: list, equity: int) -> dict:
+    """
+    Build a 1-line "pitch angle" and a short script teaser for cold calling.
+    Wholesalers need a reason for the call, dialed to whatever signal fires
+    strongest on this lead.
+    """
+    sig_types = {s.get("type") for s in signals}
+
+    # Priority order — strongest pitch first
+    if "Notice of Trustee Sale" in sig_types:
+        return {
+            "headline": "🔥 Pre-Foreclosure — auction in ~90 days",
+            "pitch":    "You can buy before it hits their credit. Fast cash close, no showings, walk-away money.",
+            "tag":      "pre-foreclosure",
+        }
+    if "Affidavit of Death" in sig_types or "Probate Case" in sig_types:
+        return {
+            "headline": "👑 Estate / Probate filing",
+            "pitch":    "Inherited property — pitch buying as-is so the heirs settle the estate without cleanup, repairs, or showings.",
+            "tag":      "estate",
+        }
+    if "Tax Delinquent" in sig_types or "State Tax Lien" in sig_types or "Federal Tax Lien" in sig_types:
+        return {
+            "headline": "💰 Tax Lien — owner behind",
+            "pitch":    "Cash offer covers the lien and leaves them walk-away money. Works for retired fixed-income owners especially.",
+            "tag":      "tax-lien",
+        }
+    if "Lis Pendens" in sig_types:
+        return {
+            "headline": "⚖️ Lawsuit pending on title",
+            "pitch":    "Title issue is delaying sale. You bring a buyer who can clear through closing escrow.",
+            "tag":      "lis-pendens",
+        }
+    if "Judgment Lien" in sig_types:
+        return {
+            "headline": "⚖️ Judgment against owner",
+            "pitch":    "Selling the property clears the judgment. Cash close + lien payoff = exit strategy.",
+            "tag":      "judgment",
+        }
+    if "Code Violation" in sig_types:
+        return {
+            "headline": "🏚️ Code violation on file",
+            "pitch":    "Owner avoiding city fines. Pitch: we buy as-is, handle the violations, you walk away clean.",
+            "tag":      "violation",
+        }
+    # No signal — fall back to flag-based pitches
+    if enrichment_flags.get("tired_landlord"):
+        return {
+            "headline": "🏢 Tired Landlord — long-held rental",
+            "pitch":    "Done with tenants? Cash offer, 14-day close, no showings, no repairs, no tenant stress.",
+            "tag":      "tired-landlord",
+        }
+    if legacy_flags.get("out_of_state") and equity >= 200_000:
+        return {
+            "headline": "📍 Out-of-State Owner — big equity",
+            "pitch":    "Remote ownership + stacking equity. Pitch: cash out without the cross-country hassle.",
+            "tag":      "oos-equity",
+        }
+    if legacy_flags.get("estate_owner"):
+        return {
+            "headline": "📜 Estate-owned",
+            "pitch":    "Owner listed as 'ESTATE OF' — usually means family dispute or administrator burnout. Offer simplicity.",
+            "tag":      "estate-owner",
+        }
+    if enrichment_flags.get("multi_owner_inheritance"):
+        return {
+            "headline": "👥 Inherited by multiple heirs",
+            "pitch":    "Joint ownership complicates sale; pitch a clean single-buyer cash offer, they split cleanly at close.",
+            "tag":      "multi-heir",
+        }
+    if enrichment_flags.get("corporate_dissolved"):
+        return {
+            "headline": "🏚️ LLC dissolved but still owns",
+            "pitch":    "Abandoned asset. Track down managers and offer cash exit — they often forgot they own it.",
+            "tag":      "corp-dissolved",
+        }
+    if legacy_flags.get("absentee"):
+        return {
+            "headline": "📬 Absentee owner",
+            "pitch":    "Mailing address ≠ site. Pitch: stop dealing with it remotely — cash out, we handle everything.",
+            "tag":      "absentee",
+        }
+    if equity >= 500_000:
+        return {
+            "headline": "💎 Deep equity, long hold",
+            "pitch":    "Tap equity without listing. Clean all-cash offer, two-week close.",
+            "tag":      "high-equity",
+        }
+    return {
+        "headline": "📞 Qualified prospect",
+        "pitch":    "Use the flags and signals on this lead to tailor your opener.",
+        "tag":      "generic",
+    }
+
+
+# -----------------------------------------------------------------------------
 # Main pipeline
 # -----------------------------------------------------------------------------
-def build(min_score: int = 30, limit_dashboard: int = 10000) -> dict:
-    now = datetime.utcnow()
+def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+    # ── Load previous leads.json to detect new leads since last build ──────
+    prev_path = DATA_DIR / "leads.json"
+    prev_first_seen: dict[str, str] = {}
+    prev_generated = None
+    if prev_path.exists():
+        try:
+            prev = json.loads(prev_path.read_text())
+            prev_generated = prev.get("generated_at")
+            for pl in prev.get("leads", []):
+                k = f"{pl.get('county')}:{pl.get('apn_norm') or pl.get('apn')}"
+                # Preserve original first_seen if present; otherwise stamp with prev build
+                prev_first_seen[k] = pl.get("first_seen_at") or prev_generated or now_iso
+            log.info(f"loaded previous leads.json ({len(prev_first_seen):,} leads "
+                     f"generated {prev_generated})")
+        except Exception as e:
+            log.warning(f"could not parse previous leads.json: {e}")
 
     maricopa_parcels = load_parcels(DATA_DIR / "maricopa_parcels.jsonl")
     pima_parcels     = load_parcels(DATA_DIR / "pima_parcels.jsonl")
@@ -296,7 +441,25 @@ def build(min_score: int = 30, limit_dashboard: int = 10000) -> dict:
         equity = equity_estimate(p)
         eq_bonus = equity_bonus(equity)
 
-        total_score = signal_score + legacy_score + enrichment_score + eq_bonus
+        # ── Combo bonuses — the wholesaler playbook ───────────────────────
+        combo_score = 0
+        combos_hit = []
+        if (legacy_flags.get("absentee") and legacy_flags.get("out_of_state")
+                and equity >= 200_000):
+            combo_score += COMBO_BONUS_TIRED_OOS_LANDLORD
+            combos_hit.append("tired_oos_landlord")
+        if (legacy_flags.get("estate_owner") and legacy_flags.get("long_hold")):
+            combo_score += COMBO_BONUS_ESTATE_LONG_HOLD
+            combos_hit.append("inherited_held_property")
+        has_probate_signal = any(
+            s.get("type") in ("Affidavit of Death", "Probate Case")
+            for s in signal_entries
+        )
+        if has_probate_signal and equity >= 300_000:
+            combo_score += COMBO_BONUS_PROBATE_HIGH_EQUITY
+            combos_hit.append("probate_high_equity")
+
+        total_score = signal_score + legacy_score + enrichment_score + eq_bonus + combo_score
 
         # Filter: only include if meets min_score threshold
         if total_score < min_score:
@@ -308,6 +471,14 @@ def build(min_score: int = 30, limit_dashboard: int = 10000) -> dict:
         is_resi = PROPERTY_TYPES.get(prop_type, {}).get("residential", False)
         if not is_resi and not parcel_signals and total_score < 60:
             continue  # drop low-scoring commercial noise
+
+        # ── First-seen timestamp: preserve previous value if lead existed before ─
+        lead_key = f"{county}:{p.get('apn_norm') or p.get('apn')}"
+        first_seen_at = prev_first_seen.get(lead_key, now_iso)
+
+        # ── Call-script angle: short pitch reason based on top distress markers ─
+        call_angle = _compose_call_angle(legacy_flags, enrichment["enrichment_flags"],
+                                         signal_entries, equity)
 
         lead = {
             "county":           county,
@@ -338,6 +509,7 @@ def build(min_score: int = 30, limit_dashboard: int = 10000) -> dict:
             # Flags
             "legacy_flags":     legacy_flags,
             "enrichment_flags": enrichment["enrichment_flags"],
+            "combos":           combos_hit,
             # Signals
             "signals":          signal_entries,
             "signal_count":     len(signal_entries),
@@ -348,20 +520,42 @@ def build(min_score: int = 30, limit_dashboard: int = 10000) -> dict:
                 "legacy":     int(legacy_score),
                 "enrichment": int(enrichment_score),
                 "equity":     int(eq_bonus),
+                "combos":     int(combo_score),
             },
+            # Recency tracking
+            "first_seen_at":    first_seen_at,
+            # Wholesaler copy
+            "call_angle":       call_angle,
         }
         leads.append(lead)
 
     # Sort by score desc
     leads.sort(key=lambda x: x["score"], reverse=True)
-    log.info(f"produced {len(leads):,} ranked leads (total, before 10k cap)")
+    log.info(f"produced {len(leads):,} ranked leads (total, before cap)")
     if leads:
         log.info(f"top scores: {[l['score'] for l in leads[:5]]}")
 
+    # ── NEW-lead detection vs previous build ─────────────────────────────
+    new_count_24h = 0
+    new_count_7d = 0
+    if prev_first_seen:
+        prev_keys = set(prev_first_seen.keys())
+        cur_keys = {f"{l['county']}:{l['apn_norm'] or l['apn']}" for l in leads}
+        truly_new = cur_keys - prev_keys   # didn't exist in previous build at all
+        for l in leads:
+            k = f"{l['county']}:{l['apn_norm'] or l['apn']}"
+            if k in truly_new:
+                new_count_24h += 1
+        log.info(f"NEW leads since last build: {len(truly_new):,}")
+    else:
+        log.info("no previous leads.json — all leads are considered seen today")
+
     out = {
-        "generated_at": now.isoformat(timespec="seconds") + "Z",
+        "generated_at": now_iso,
+        "previous_generated_at": prev_generated,
         "counties":     ["Maricopa", "Pima"],
         "total_leads":  len(leads),
+        "new_since_last_build": new_count_24h,
         "unresolved_signals": unresolved,
         "property_types": PROPERTY_TYPES,
         "flag_weights": {**LEGACY_FLAG_WEIGHTS, **ENRICHMENT_WEIGHTS, **SIGNAL_WEIGHTS},

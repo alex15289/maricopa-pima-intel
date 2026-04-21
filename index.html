@@ -278,12 +278,98 @@
     background:var(--bg-panel);
   }
 
-  /* ---------- Loading state ---------- */
-  .loader {
-    position:absolute; inset:0; display:grid; place-items:center;
-    background:rgba(11,18,32,0.95); z-index:1000;
+  /* ---------- v2 Polish: Quick Lists + NEW badges + Global Search + Call Angle ---------- */
+
+  /* Global search in header */
+  .global-search-wrap { position:relative; flex:1; max-width:500px; margin:0 18px; }
+  .global-search {
+    width:100%; padding:10px 14px 10px 38px; border-radius:6px;
+    background:var(--bg-elev); border:1px solid var(--border);
+    color:var(--text); font-size:12.5px; font-family:"JetBrains Mono",monospace;
+    letter-spacing:0.02em;
   }
-  .loader .wave { color:var(--accent); font-family:"Fraunces",serif; font-size:28px; }
+  .global-search:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+  .global-search-icon {
+    position:absolute; top:50%; transform:translateY(-50%); left:13px;
+    color:var(--text-muted); font-size:14px; pointer-events:none;
+  }
+  .global-autocomplete {
+    position:absolute; top:100%; left:0; right:0; z-index:1500;
+    background:var(--bg-panel); border:1px solid var(--accent-dim);
+    border-radius:4px; max-height:340px; overflow-y:auto; margin-top:4px;
+    box-shadow:0 10px 28px rgba(0,0,0,.5); display:none;
+  }
+  .global-autocomplete.visible { display:block; }
+  .autocomplete-item {
+    padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--border);
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+  }
+  .autocomplete-item:hover { background:var(--bg-elev); }
+  .autocomplete-item:last-child { border-bottom:none; }
+  .autocomplete-item .ac-main { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .autocomplete-item .ac-owner { color:var(--text); font-size:12px; font-weight:600; }
+  .autocomplete-item .ac-addr  { color:var(--text-muted); font-size:10.5px; }
+  .autocomplete-item .ac-score { font-family:"JetBrains Mono",monospace; font-size:10.5px; color:var(--accent); }
+
+  /* Quick Lists tile strip */
+  .quicklists-strip {
+    display:flex; gap:8px; padding:12px 18px; background:var(--bg-panel);
+    border-bottom:1px solid var(--border); overflow-x:auto;
+  }
+  .ql-tile {
+    flex:0 0 auto; min-width:140px; padding:10px 14px;
+    border:1px solid var(--border); border-radius:6px; background:var(--bg-elev);
+    cursor:pointer; transition:all .12s ease;
+    display:flex; flex-direction:column; gap:2px;
+  }
+  .ql-tile:hover { border-color:var(--accent); transform:translateY(-1px); }
+  .ql-tile.active {
+    background:var(--accent-soft); border-color:var(--accent);
+    box-shadow:0 0 0 1px var(--accent);
+  }
+  .ql-tile .ql-icon { font-size:16px; }
+  .ql-tile .ql-label { font-size:11px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--text); }
+  .ql-tile .ql-count {
+    font-family:"Fraunces",serif; font-size:16px; color:var(--accent);
+  }
+  .ql-tile.new-leads .ql-icon { animation: newpulse 1.8s ease-in-out infinite; }
+  @keyframes newpulse { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
+
+  /* NEW badge on leads */
+  .new-badge {
+    display:inline-block; padding:1px 6px; border-radius:8px; font-size:9px;
+    font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
+    background:#ef4444; color:#fff; margin-left:6px; vertical-align:middle;
+    animation: newpulse 1.8s ease-in-out infinite;
+  }
+
+  /* Call Angle box in detail pane */
+  .call-angle {
+    background:linear-gradient(135deg, var(--accent-soft), rgba(212,175,55,0.04));
+    border:1px solid var(--accent-dim); border-radius:6px;
+    padding:14px 16px; margin:14px 0;
+  }
+  .call-angle .angle-head {
+    font-family:"Fraunces",serif; font-size:15px; color:var(--accent);
+    margin-bottom:6px; font-weight:700;
+  }
+  .call-angle .angle-pitch {
+    font-size:12px; color:var(--text); line-height:1.55;
+  }
+  .call-angle .angle-tag {
+    display:inline-block; margin-top:8px; padding:2px 7px;
+    background:var(--bg-elev); border:1px solid var(--border); border-radius:3px;
+    font-family:"JetBrains Mono",monospace; font-size:9.5px;
+    color:var(--text-muted); text-transform:uppercase; letter-spacing:0.1em;
+  }
+
+  /* Combo-hit badge in lead detail */
+  .combo-badge {
+    display:inline-block; padding:3px 9px; margin:3px 4px 0 0;
+    border-radius:12px; font-size:10px; font-weight:700;
+    background:linear-gradient(90deg, #8b5cf6, #d4af37); color:#fff;
+    text-transform:uppercase; letter-spacing:0.05em;
+  }
 
   /* ---------- Help icon (top-right, persistent) ---------- */
   .help-btn {
@@ -503,16 +589,66 @@
       <h1>Maricopa <span class="dot">+</span> Pima Intel</h1>
       <span class="sub">Motivated Seller Lead Desk</span>
     </div>
+    <div class="global-search-wrap">
+      <span class="global-search-icon">🔎</span>
+      <input type="search" class="global-search" id="global-search"
+             placeholder="Search APN, owner name, or address…"
+             autocomplete="off" spellcheck="false" />
+      <div class="global-autocomplete" id="global-autocomplete"></div>
+    </div>
     <div class="kpis">
       <div class="kpi"><div class="val" id="kpi-totalall">—</div><div class="lbl">Total Pool</div></div>
       <div class="kpi"><div class="val" id="kpi-total">—</div><div class="lbl">In View</div></div>
-      <div class="kpi"><div class="val" id="kpi-mar">—</div><div class="lbl">Maricopa</div></div>
-      <div class="kpi"><div class="val" id="kpi-pima">—</div><div class="lbl">Pima</div></div>
+      <div class="kpi"><div class="val" id="kpi-new">—</div><div class="lbl">🆕 New</div></div>
       <div class="kpi"><div class="val" id="kpi-stacked">—</div><div class="lbl">Stacked 2+</div></div>
       <div class="kpi"><div class="val" id="kpi-updated">—</div><div class="lbl">Updated</div></div>
       <div class="kpi live-kpi"><span class="live-dot"></span><span class="live-text">LIVE</span></div>
     </div>
   </header>
+
+  <!-- Quick Lists strip -->
+  <div class="quicklists-strip" id="quicklists-strip">
+    <div class="ql-tile" data-ql="all">
+      <span class="ql-icon">📊</span>
+      <span class="ql-count" id="ql-count-all">—</span>
+      <span class="ql-label">All Leads</span>
+    </div>
+    <div class="ql-tile new-leads" data-ql="new">
+      <span class="ql-icon">🆕</span>
+      <span class="ql-count" id="ql-count-new">—</span>
+      <span class="ql-label">New Today</span>
+    </div>
+    <div class="ql-tile" data-ql="preforeclosure">
+      <span class="ql-icon">🔥</span>
+      <span class="ql-count" id="ql-count-preforeclosure">—</span>
+      <span class="ql-label">Pre-Foreclosure</span>
+    </div>
+    <div class="ql-tile" data-ql="estate">
+      <span class="ql-icon">👑</span>
+      <span class="ql-count" id="ql-count-estate">—</span>
+      <span class="ql-label">Estate / Probate</span>
+    </div>
+    <div class="ql-tile" data-ql="taxlien">
+      <span class="ql-icon">💰</span>
+      <span class="ql-count" id="ql-count-taxlien">—</span>
+      <span class="ql-label">Tax Lien</span>
+    </div>
+    <div class="ql-tile" data-ql="absentee_equity">
+      <span class="ql-icon">🏢</span>
+      <span class="ql-count" id="ql-count-absentee_equity">—</span>
+      <span class="ql-label">Tired OOS Landlord</span>
+    </div>
+    <div class="ql-tile" data-ql="high_equity">
+      <span class="ql-icon">💎</span>
+      <span class="ql-count" id="ql-count-high_equity">—</span>
+      <span class="ql-label">High Equity</span>
+    </div>
+    <div class="ql-tile" data-ql="stacked">
+      <span class="ql-icon">⚡</span>
+      <span class="ql-count" id="ql-count-stacked">—</span>
+      <span class="ql-label">Stacked 2+</span>
+    </div>
+  </div>
 
   <!-- County Tab Bar -->
   <div class="county-tabs">
@@ -769,8 +905,11 @@ const state = {
   leads: [],
   filtered: [],
   selectedId: null,
+  generatedAt: null,        // ISO timestamp of current build
+  prevGeneratedAt: null,    // previous build timestamp (for NEW detection)
   filters: {
     activeTab:    "all",  // "all" | "Maricopa" | "Pima"
+    quickList:    "all",  // "all" | "new" | "preforeclosure" | "estate" | "taxlien" | "absentee_equity" | "high_equity" | "stacked"
     signals:      new Set(),
     flags:        new Set(),
     propertyTypes: new Set(),
@@ -987,9 +1126,14 @@ async function loadData() {
     const payload = await res.json();
     state.leads = (payload.leads || []).map((l, i) => ({ ...l, _id: i }));
     state.totalPool = payload.total_leads || state.leads.length;
+    state.generatedAt = payload.generated_at || null;
+    state.prevGeneratedAt = payload.previous_generated_at || null;
     $("#kpi-updated").textContent = (payload.generated_at || "").slice(0,10) || "—";
     $("#kpi-totalall").textContent = state.totalPool.toLocaleString();
     buildSignalChips();
+    computeQuickListCounts();
+    initQuickLists();
+    initGlobalSearch();
     applyFilters();
     $("#loader").classList.add("hidden");     // hide loader FIRST so UI shows even if map fails
     try { initMap(); } catch (e) { console.warn("map init failed:", e); }
@@ -1098,6 +1242,36 @@ function matches(lead) {
   const lf = lead.legacy_flags || {};
   const ef = lead.enrichment_flags || {};
   const hasFlag = name => !!(lf[name] || ef[name]);
+  const hasSignal = type => (lead.signals || []).some(s => s.type === type);
+
+  // Quick Lists gate — overrides standard filtering with a curated preset
+  if (f.quickList && f.quickList !== "all") {
+    switch (f.quickList) {
+      case "new":
+        if (!isNewLead(lead)) return false;
+        break;
+      case "preforeclosure":
+        if (!hasSignal("Notice of Trustee Sale") && !hasSignal("Sheriffs Deed")) return false;
+        break;
+      case "estate":
+        if (!hasSignal("Affidavit of Death") && !hasSignal("Probate Case")
+            && !lf.estate_owner && !ef.multi_owner_inheritance && !ef.widow_indicator) return false;
+        break;
+      case "taxlien":
+        if (!hasSignal("Tax Delinquent") && !hasSignal("State Tax Lien")
+            && !hasSignal("Federal Tax Lien") && !hasSignal("City Lien")) return false;
+        break;
+      case "absentee_equity":
+        if (!(lf.absentee && lf.out_of_state && (lead.equity_est||0) >= 200000)) return false;
+        break;
+      case "high_equity":
+        if ((lead.equity_est||0) < 300000) return false;
+        break;
+      case "stacked":
+        if ((lead.signal_count||0) < 2 && !(lead.combos||[]).length) return false;
+        break;
+    }
+  }
 
   // Property type filter (OR within group)
   if (f.propertyTypes.size > 0 && !f.propertyTypes.has(lead.property_type)) return false;
@@ -1154,6 +1328,170 @@ function applyFilters() {
   renderMap();
 }
 
+/* ============================================================
+   NEW lead detection — fires when lead.first_seen_at is within
+   the last 48h OR after the previous build timestamp
+   ============================================================ */
+function isNewLead(lead) {
+  const fs = lead.first_seen_at;
+  if (!fs) return false;
+  // If we have a previous-build timestamp, "new" = first_seen after prev build
+  if (state.prevGeneratedAt) {
+    return fs > state.prevGeneratedAt;
+  }
+  // Fallback: within last 48h of current build
+  const cur = state.generatedAt;
+  if (!cur) return false;
+  const curMs = Date.parse(cur);
+  const fsMs  = Date.parse(fs);
+  return (curMs - fsMs) <= 48 * 3600 * 1000;
+}
+
+/* ============================================================
+   Quick Lists — the Propstream-style preset tiles at top
+   ============================================================ */
+function computeQuickListCounts() {
+  const counts = { all:0, new:0, preforeclosure:0, estate:0, taxlien:0,
+                   absentee_equity:0, high_equity:0, stacked:0 };
+  for (const lead of state.leads) {
+    counts.all++;
+    if (isNewLead(lead)) counts.new++;
+
+    const sigs = new Set((lead.signals||[]).map(s => s.type));
+    const lf = lead.legacy_flags || {};
+    const ef = lead.enrichment_flags || {};
+
+    if (sigs.has("Notice of Trustee Sale") || sigs.has("Sheriffs Deed"))
+      counts.preforeclosure++;
+    if (sigs.has("Affidavit of Death") || sigs.has("Probate Case")
+        || lf.estate_owner || ef.multi_owner_inheritance || ef.widow_indicator)
+      counts.estate++;
+    if (sigs.has("Tax Delinquent") || sigs.has("State Tax Lien")
+        || sigs.has("Federal Tax Lien") || sigs.has("City Lien"))
+      counts.taxlien++;
+    if (lf.absentee && lf.out_of_state && (lead.equity_est||0) >= 200000)
+      counts.absentee_equity++;
+    if ((lead.equity_est||0) >= 300000) counts.high_equity++;
+    if ((lead.signal_count||0) >= 2 || (lead.combos||[]).length > 0)
+      counts.stacked++;
+  }
+  // Write counts back to the UI
+  for (const k of Object.keys(counts)) {
+    const el = document.getElementById(`ql-count-${k}`);
+    if (el) el.textContent = counts[k].toLocaleString();
+  }
+  // Update the header "New" KPI
+  const newKpi = document.getElementById("kpi-new");
+  if (newKpi) newKpi.textContent = counts.new.toLocaleString();
+}
+
+function initQuickLists() {
+  document.querySelectorAll(".ql-tile").forEach(tile => {
+    tile.addEventListener("click", () => {
+      const which = tile.dataset.ql;
+      // Toggle off if clicking the active tile while it's active
+      if (state.filters.quickList === which && which !== "all") {
+        state.filters.quickList = "all";
+      } else {
+        state.filters.quickList = which;
+      }
+      // Update visual active state
+      document.querySelectorAll(".ql-tile").forEach(t => t.classList.remove("active"));
+      if (state.filters.quickList !== "all") {
+        tile.classList.add("active");
+      } else {
+        // mark the "all" tile active instead
+        document.querySelector('.ql-tile[data-ql="all"]')?.classList.add("active");
+      }
+      applyFilters();
+    });
+  });
+  // Start with "all" active
+  document.querySelector('.ql-tile[data-ql="all"]')?.classList.add("active");
+}
+
+/* ============================================================
+   Global search with live autocomplete (top-of-header)
+   ============================================================ */
+function initGlobalSearch() {
+  const input = document.getElementById("global-search");
+  const dd    = document.getElementById("global-autocomplete");
+  if (!input || !dd) return;
+
+  let timer = null;
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => renderAutocomplete(input.value.trim()), 120);
+  });
+  input.addEventListener("blur", () => {
+    setTimeout(() => dd.classList.remove("visible"), 180);
+  });
+  input.addEventListener("focus", () => {
+    if (input.value.trim()) renderAutocomplete(input.value.trim());
+  });
+}
+
+function renderAutocomplete(q) {
+  const dd = document.getElementById("global-autocomplete");
+  if (!dd) return;
+  if (!q || q.length < 2) {
+    dd.classList.remove("visible");
+    dd.innerHTML = "";
+    return;
+  }
+  const ql = q.toLowerCase();
+  const hits = [];
+  for (const lead of state.leads) {
+    const hay = [lead.apn, lead.owner, lead.site_address, lead.mail_address, lead.site_city]
+                .filter(Boolean).join(" ").toLowerCase();
+    if (hay.includes(ql)) {
+      hits.push(lead);
+      if (hits.length >= 12) break;
+    }
+  }
+  if (!hits.length) {
+    dd.innerHTML = `<div class="autocomplete-item" style="color:var(--text-muted); justify-content:center;">No matches</div>`;
+    dd.classList.add("visible");
+    return;
+  }
+  dd.innerHTML = hits.map(lead => {
+    const owner = (lead.owner || "(no owner)").slice(0, 40);
+    const addr  = lead.site_address ? `${lead.site_address}, ${lead.site_city || ""}` : "";
+    const score = lead.score || 0;
+    return `<div class="autocomplete-item" data-id="${lead._id}">
+              <div class="ac-main">
+                <div class="ac-owner">${escapeHtml(owner)}</div>
+                <div class="ac-addr">${escapeHtml(addr || lead.apn || "")}</div>
+              </div>
+              <div class="ac-score">${score}</div>
+            </div>`;
+  }).join("");
+  dd.classList.add("visible");
+  dd.querySelectorAll(".autocomplete-item[data-id]").forEach(el => {
+    el.addEventListener("mousedown", () => {
+      const id = +el.dataset.id;
+      state.selectedId = id;
+      state.filters.quickList = "all";
+      document.querySelectorAll(".ql-tile").forEach(t => t.classList.remove("active"));
+      document.querySelector('.ql-tile[data-ql="all"]')?.classList.add("active");
+      applyFilters();
+      renderDetail();
+      // scroll the selected row into view
+      setTimeout(() => {
+        const row = document.querySelector(`tr.selected`);
+        row?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 80);
+      // clear input
+      document.getElementById("global-search").value = "";
+      document.getElementById("global-autocomplete").classList.remove("visible");
+    });
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
 function sortFiltered() {
   const { key, dir } = state.sort;
   state.filtered.sort((a,b) => {
@@ -1205,7 +1543,7 @@ function renderTable() {
         <td><span class="signal-tags">${sigTags}</span></td>
         <td>${ptBadge}${l.site_address || '<em style="color:var(--text-muted)">no site address</em>'}<br/>
             <span style="color:var(--text-muted);font-size:10px">${l.site_city||""} ${l.site_zip||""}</span></td>
-        <td>${(l.owner||"—").slice(0,28)}</td>
+        <td>${(l.owner||"—").slice(0,28)}${isNewLead(l) ? '<span class="new-badge">NEW</span>' : ''}</td>
         <td>${fmtM(l.equity_est)}</td>
         <td>${l.year_built || "—"}</td>
       </tr>`;
@@ -1275,14 +1613,15 @@ function hideTierTooltip() {
 function renderKPIs() {
   const f = state.filtered;
   $("#kpi-total").textContent = f.length.toLocaleString();
-  $("#kpi-mar").textContent   = f.filter(x => x.county === "Maricopa").length.toLocaleString();
-  $("#kpi-pima").textContent  = f.filter(x => x.county === "Pima").length.toLocaleString();
   $("#kpi-stacked").textContent = f.filter(x => (x.signal_count||0) >= 2).length.toLocaleString();
 
   // Update county tab badge counts (based on unfiltered leads so tabs always show total per county)
-  $("#tab-count-all").textContent      = state.leads.length.toLocaleString();
-  $("#tab-count-maricopa").textContent = state.leads.filter(x => x.county === "Maricopa").length.toLocaleString();
-  $("#tab-count-pima").textContent     = state.leads.filter(x => x.county === "Pima").length.toLocaleString();
+  const mAll  = document.getElementById("tab-count-all");
+  const mMar  = document.getElementById("tab-count-maricopa");
+  const mPima = document.getElementById("tab-count-pima");
+  if (mAll)  mAll.textContent  = state.leads.length.toLocaleString();
+  if (mMar)  mMar.textContent  = state.leads.filter(x => x.county === "Maricopa").length.toLocaleString();
+  if (mPima) mPima.textContent = state.leads.filter(x => x.county === "Pima").length.toLocaleString();
 }
 
 /* ============================================================
@@ -1295,16 +1634,34 @@ function renderDetail() {
     el.innerHTML = '<div class="empty-detail">Select a lead to view details and run deal math</div>';
     return;
   }
+  const ca = l.call_angle || null;
+  const combosHit = l.combos || [];
+  const newFlag = isNewLead(l);
   el.innerHTML = `
-    <h2>${l.site_address || "—"}</h2>
+    <h2>${l.site_address || "—"}${newFlag ? '<span class="new-badge" style="vertical-align:middle;margin-left:10px;font-size:10px;">NEW</span>' : ""}</h2>
     <div class="sub">${l.site_city || ""} ${l.site_zip || ""} · <span class="county-pill ${l.county}">${l.county}</span></div>
+
+    ${ca ? `
+      <div class="call-angle">
+        <div class="angle-head">${ca.headline || ""}</div>
+        <div class="angle-pitch">${ca.pitch || ""}</div>
+        <span class="angle-tag">${ca.tag || ""}</span>
+      </div>
+    ` : ""}
+
+    ${combosHit.length ? `
+      <div class="section">
+        <h4>Stacked Patterns</h4>
+        ${combosHit.map(c => `<span class="combo-badge">${c.replace(/_/g,' ')}</span>`).join("")}
+      </div>
+    ` : ""}
 
     <div class="section">
       <h4>Score ${l.score||0}</h4>
       <div class="kv">
         <span class="k">Signals</span><span class="v">+${l.score_parts?.signals||0}</span>
-        <span class="k">Flags</span><span class="v">+${l.score_parts?.flags||0}</span>
-        <span class="k">Stack bonus</span><span class="v">+${l.score_parts?.stack||0}</span>
+        <span class="k">Flags</span><span class="v">+${(l.score_parts?.legacy||0) + (l.score_parts?.enrichment||0)}</span>
+        <span class="k">Combo bonus</span><span class="v">+${l.score_parts?.combos||0}</span>
         <span class="k">Equity bonus</span><span class="v">+${l.score_parts?.equity||0}</span>
       </div>
     </div>
