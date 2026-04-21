@@ -53,10 +53,18 @@
     font-size:10.5px; color:var(--text-muted); text-transform:uppercase;
     letter-spacing:0.18em;
   }
-  .kpis { display:flex; gap:22px; margin-left:auto; }
+  .kpis { display:flex; gap:22px; margin-left:auto; align-items:center; }
   .kpi { display:flex; flex-direction:column; gap:2px; text-align:right; }
   .kpi .val { font-family:"Fraunces",serif; font-size:20px; font-weight:700; color:var(--accent); }
   .kpi .lbl { font-size:9.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.14em; }
+  .live-kpi { flex-direction:row; align-items:center; gap:7px; padding:6px 10px; border:1px solid rgba(34,197,94,.35); border-radius:16px; background:rgba(34,197,94,.05); }
+  .live-dot { width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.7); animation:live-pulse 1.6s ease-out infinite; }
+  .live-text { font-size:10.5px; font-weight:700; letter-spacing:0.18em; color:#22c55e; font-family:"JetBrains Mono",monospace; }
+  @keyframes live-pulse {
+    0%   { box-shadow:0 0 0 0 rgba(34,197,94,.7); }
+    70%  { box-shadow:0 0 0 10px rgba(34,197,94,0); }
+    100% { box-shadow:0 0 0 0 rgba(34,197,94,0); }
+  }
 
   /* ---------- Main layout ---------- */
   main { display:grid; grid-template-columns: 300px 1fr 380px; overflow:hidden; }
@@ -326,11 +334,13 @@
       <span class="sub">Motivated Seller Lead Desk</span>
     </div>
     <div class="kpis">
-      <div class="kpi"><div class="val" id="kpi-total">—</div><div class="lbl">Leads</div></div>
+      <div class="kpi"><div class="val" id="kpi-totalall">—</div><div class="lbl">Total Pool</div></div>
+      <div class="kpi"><div class="val" id="kpi-total">—</div><div class="lbl">In View</div></div>
       <div class="kpi"><div class="val" id="kpi-mar">—</div><div class="lbl">Maricopa</div></div>
       <div class="kpi"><div class="val" id="kpi-pima">—</div><div class="lbl">Pima</div></div>
       <div class="kpi"><div class="val" id="kpi-stacked">—</div><div class="lbl">Stacked 2+</div></div>
       <div class="kpi"><div class="val" id="kpi-updated">—</div><div class="lbl">Updated</div></div>
+      <div class="kpi live-kpi"><span class="live-dot"></span><span class="live-text">LIVE</span></div>
     </div>
   </header>
 
@@ -633,11 +643,13 @@ const PROP_TYPES = {
    ============================================================ */
 async function loadData() {
   try {
-    const res = await fetch("data/leads.json", { cache: "no-store" });
+    const res = await fetch("data/leads.json?v=" + Date.now(), { cache: "no-store" });
     if (!res.ok) throw new Error("leads.json not found");
     const payload = await res.json();
     state.leads = (payload.leads || []).map((l, i) => ({ ...l, _id: i }));
+    state.totalPool = payload.total_leads || state.leads.length;
     $("#kpi-updated").textContent = (payload.generated_at || "").slice(0,10) || "—";
+    $("#kpi-totalall").textContent = state.totalPool.toLocaleString();
     buildSignalChips();
     applyFilters();
     $("#loader").classList.add("hidden");     // hide loader FIRST so UI shows even if map fails
