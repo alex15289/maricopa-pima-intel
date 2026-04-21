@@ -30,7 +30,7 @@ from urllib.error import HTTPError, URLError
 
 PARCELS_URL = (
     "https://gis.mcassessor.maricopa.gov/arcgis/rest/services/"
-    "Parcels/MapServer/0/query"
+    "MaricopaDynamicQueryService/MapServer/0/query"
 )
 # Fallback: the leaner Parcels/MapServer/0 endpoint if the Dynamic one is down.
 PARCELS_URL_FALLBACK = (
@@ -138,31 +138,29 @@ def iter_all_parcels(
 # -----------------------------------------------------------------------------
 
 FIELD_MAP = {
-    "apn":             ["APN", "APN_DASH"],
-    "owner":           ["OWNER_NAME"],
-    "owner_2":         ["INCAREOF"],
-    "site_address":    ["PHYSICAL_ADDRESS"],
-    "site_city":       ["PHYSICAL_CITY"],
-    "site_zip":        ["PHYSICAL_ZIP"],
-    "mail_address":    ["MAIL_ADDRESS", "MAIL_ADDR1"],
-    "mail_city":       ["MAIL_CITY"],
-    "mail_state":      ["MAIL_STATE"],
-    "mail_zip":        ["MAIL_ZIP"],
-    "subdivision":     ["SUBNAME"],
-    "use_code":        ["PUC"],
-    "use_desc":        ["LC_CUR"],
-    "year_built":      ["CONST_YEAR"],
-    "living_sqft":     ["LIVING_SPACE"],
-    "lot_sqft":        ["LAND_SIZE"],
-    "bedrooms":        [],
-    "bathrooms":       [],
-    "fcv":             ["FCV_CUR"],
-    "lpv":             ["LPV_CUR"],
-    "last_sale_date":  ["SALE_DATE", "DEED_DATE"],
-    "last_sale_price": ["SALE_PRICE"],
-    "latitude":        ["LATITUDE"],
-    "longitude":       ["LONGITUDE"],
-    "jurisdiction":    ["JURISDICTION"],
+    # destination: [candidate source field names — first match wins]
+    "apn":             ["APN", "PARCEL", "PARCELNO", "PARCEL_NUM"],
+    "owner":           ["OWNER_NAME", "OWNER", "OWNER_NM"],
+    "owner_2":         ["OWNER_NAME2", "OWNER2"],
+    "site_address":    ["SITE_ADDRESS", "SITUS_ADDR", "PHYSICAL_ADDR", "ADDRESS"],
+    "site_city":       ["SITE_CITY", "CITY"],
+    "site_zip":        ["SITE_ZIP", "ZIP", "ZIPCODE"],
+    "mail_address":    ["OWNER_MAILING_ADDRESS", "MAIL_ADDR", "MAILING_ADDR"],
+    "mail_city":       ["OWNER_MAILING_CITY", "MAIL_CITY"],
+    "mail_state":      ["OWNER_MAILING_STATE", "MAIL_STATE"],
+    "mail_zip":        ["OWNER_MAILING_ZIP", "MAIL_ZIP"],
+    "subdivision":     ["SUBDIVISION", "SUB_NAME"],
+    "use_code":        ["USE_CODE", "PROPERTY_USE", "PUC"],
+    "use_desc":        ["USE_DESC", "USE_DESCRIPTION", "PUC_DESC"],
+    "year_built":      ["YEAR_BUILT", "YRBLT"],
+    "living_sqft":     ["LIVING_SQFT", "LIVABLE_SQFT", "SQFT"],
+    "lot_sqft":        ["LOT_SIZE", "LOT_SQFT", "LAND_SIZE"],
+    "bedrooms":        ["BEDROOMS", "BEDS"],
+    "bathrooms":       ["BATHROOMS", "BATHS"],
+    "fcv":             ["FULL_CASH_VALUE", "FCV", "TOTAL_FCV"],
+    "lpv":             ["LIMITED_PROPERTY_VALUE", "LPV"],
+    "last_sale_date":  ["LAST_SALE_DATE", "SALE_DATE", "DEED_DATE"],
+    "last_sale_price": ["LAST_SALE_PRICE", "SALE_PRICE", "DEED_PRICE"],
 }
 
 UNIFIED_FIELDS = list(FIELD_MAP.keys()) + ["county", "source_objectid"]

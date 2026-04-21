@@ -1,26 +1,15 @@
 """
-Pima County parcel master scraper.
+Pima County parcel master scraper — v2, with dynamic OID field discovery.
 
-Pima hosts its parcel layer via ArcGIS Online (services1.arcgis.com) under the
-'Ezk9fcjSUkeadg6u' org ID — same REST semantics as Maricopa, different org.
-The exact parcel layer URL can change; the open data portal at
-https://gisopendata.pima.gov publishes the canonical "View Data Source" URL
-for each dataset. We default to the most common parcels endpoint and let the
-operator override with --url if it's been renamed.
-
-Common Pima parcel endpoints to try in order:
-  1. services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/Parcels/FeatureServer/0
-  2. services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/Parcel/FeatureServer/0
-  3. services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/MHArrangements/FeatureServer/0
+v1 hardcoded OBJECTID, which fails on Pima's FeatureServer because the OID
+field is named differently. v2 reads the layer describe JSON first, finds the
+actual OID field, and uses that for ordering. Also probes all candidate
+endpoints and picks the one with the most records.
 
 Usage:
     python pima_parcels.py
     python pima_parcels.py --url <override>
     python pima_parcels.py --limit 5000
-
-Output:
-    data/pima_parcels.jsonl
-    data/pima_parcels.csv
 """
 
 import argparse
@@ -35,12 +24,18 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 CANDIDATE_URLS = [
+    "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/Parcels_Regional/FeatureServer/0",
+    "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/paregion/FeatureServer/0",
+    "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/ParcelsRegional/FeatureServer/0",
     "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/Parcels/FeatureServer/0",
     "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/Parcel/FeatureServer/0",
+    "https://gisdata.pima.gov/arcgis1/rest/services/GISOpenData/LandRecords/MapServer/0",
+    "https://gisdata.pima.gov/arcgis1/rest/services/GISOpenData/LandRecords/MapServer/1",
+    "https://gisdata.pima.gov/arcgis1/rest/services/GISOpenData/LandRecords/MapServer/2",
     "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/MHArrangements/FeatureServer/0",
 ]
 
-PAGE_SIZE = 2000  # Pima advertises MaxRecordCount: 2000 on MHArrangements
+PAGE_SIZE = 2000
 REQUEST_TIMEOUT = 60
 RETRY_BACKOFF = [2, 5, 15, 45]
 USER_AGENT = "maricopa-pima-intel/1.0 (+real estate intel)"
@@ -68,63 +63,85 @@ def _get_json(url: str, params: dict) -> dict:
 
 
 def probe_endpoint(base_url: str) -> Optional[dict]:
-    """Returns the layer describe JSON if reachable, else None."""
     try:
-        data = _get_json(base_url, {"f": "json"})
-        if "error" not in data and data.get("type") == "Feature Layer":
-            return data
-    except Exception:
-        pass
-    return None
+        info = _get_json(base_url, {"f": "json"})
+        if "error" in info or info.get("type") != "Feature Layer":
+            return None
+        count_data = _get_json(f"{base_url}/query", {
+            "where": "1=1", "returnCountOnly": "true", "f": "json"
+        })
+        count = int(count_data.get("count", 0))
+        oid_field = info.get("objectIdField")
+        if not oid_field:
+            for f in info.get("fields", []):
+                if f.get("type") == "esriFieldTypeOID":
+                    oid_field = f["name"]
+                    break
+        return {
+            "url":    base_url,
+            "name":   info.get("name", "?"),
+            "fields": [f["name"] for f in info.get("fields", [])],
+            "oid":    oid_field,
+            "count":  count,
+        }
+    except Exception as e:
+        print(f"  probe failed: {e}", file=sys.stderr)
+        return None
 
 
-def pick_endpoint(override: Optional[str]) -> tuple:
-    """Returns (query_url, describe_json). Tries candidates until one works."""
-    candidates = [override] if override else CANDIDATE_URLS
-    for base in candidates:
-        if not base:
-            continue
-        info = probe_endpoint(base)
+def pick_best_endpoint(override: Optional[str]) -> dict:
+    if override:
+        info = probe_endpoint(override)
+        if not info:
+            raise RuntimeError(f"Override URL didn't respond: {override}")
+        return info
+
+    print("Probing Pima endpoints...")
+    candidates = []
+    for url in CANDIDATE_URLS:
+        short = "/".join(url.split("/")[-3:])
+        info = probe_endpoint(url)
         if info:
-            print(f"Using endpoint: {base}")
-            print(f"  Layer: {info.get('name', '?')} — {len(info.get('fields', []))} fields")
-            return f"{base}/query", info
-    raise RuntimeError(
-        "No working Pima parcel endpoint found. Visit "
-        "https://gisopendata.pima.gov, find the Parcels dataset, click "
-        "'View Data Source', copy the URL (without /query), and pass it "
-        "with --url."
-    )
+            print(f"  ✓ {info['name']}: {info['count']:,} records, OID={info['oid']}")
+            candidates.append(info)
+        else:
+            print(f"  ✗ {short}")
+
+    if not candidates:
+        raise RuntimeError(
+            "No working Pima parcel endpoint. Go to https://gisopendata.pima.gov, "
+            "find the Parcels - Regional dataset, click 'View Data Source', and "
+            "pass that URL with --url."
+        )
+
+    best = max(candidates, key=lambda x: x["count"])
+    print(f"\nUsing: {best['name']} ({best['count']:,} records)")
+    return best
 
 
-def count_records(url: str, where: str) -> int:
-    data = _get_json(url, {"where": where, "returnCountOnly": "true", "f": "json"})
-    return int(data.get("count", 0))
-
-
-def fetch_page(url: str, where: str, offset: int) -> list:
+def fetch_page(url: str, offset: int, oid_field: str) -> list:
     params = {
-        "where": where,
+        "where": "1=1",
         "outFields": "*",
         "f": "json",
         "resultOffset": offset,
         "resultRecordCount": PAGE_SIZE,
-        "orderByFields": "OBJECTID ASC",
+        "orderByFields": f"{oid_field} ASC",
         "returnGeometry": "false",
     }
-    data = _get_json(url, params)
+    data = _get_json(f"{url}/query", params)
     if "error" in data:
         raise RuntimeError(f"API error: {data['error']}")
     return [feat.get("attributes", {}) for feat in data.get("features", [])]
 
 
-def iter_all(query_url: str, where: str, limit: Optional[int]) -> Iterator[dict]:
-    total = count_records(query_url, where)
+def iter_all(endpoint: dict, limit: Optional[int]) -> Iterator[dict]:
+    total = endpoint["count"]
     target = min(total, limit) if limit else total
-    print(f"Pima: {total:,} parcels match — fetching {target:,}")
+    print(f"Pima: fetching {target:,} parcels")
     fetched, offset = 0, 0
     while fetched < target:
-        batch = fetch_page(query_url, where, offset)
+        batch = fetch_page(endpoint["url"], offset, endpoint["oid"])
         if not batch:
             break
         for row in batch:
@@ -137,38 +154,39 @@ def iter_all(query_url: str, where: str, limit: Optional[int]) -> Iterator[dict]
             print(f"  progress: {fetched:,}/{target:,}")
 
 
-# Pima field names tend to use TAXCODE, OWNER_NAME, SITUS_ADDR, etc.
 FIELD_MAP = {
-    "apn":             ["TAXCODE", "PARCEL", "APN", "PARCELNO"],
-    "owner":           ["OWNER_NAME", "OWNER", "OWNERSHIP"],
-    "owner_2":         ["OWNER2", "CO_OWNER"],
-    "site_address":    ["SITUS_ADDR", "SITE_ADDR", "PHYSICAL_ADDR", "ADDRESS"],
+    "apn":             ["TAXCODE", "PARCEL", "PARCELNUM", "APN", "PARCELNO", "PARCEL_NUM"],
+    "owner":           ["OWNER_NAME", "OWNER", "OWNERSHIP", "OWNER1", "TAXPAYER"],
+    "owner_2":         ["OWNER2", "CO_OWNER", "OWNER_NAME2"],
+    "site_address":    ["SITUS_ADDR", "SITUS_ADDRESS", "SITE_ADDR", "PHYSICAL_ADDR", "ADDRESS", "PROPERTY_ADDR"],
     "site_city":       ["SITUS_CITY", "SITE_CITY", "CITY"],
-    "site_zip":        ["SITUS_ZIP", "SITE_ZIP", "ZIP"],
-    "mail_address":    ["MAIL_ADDR", "MAILING_ADDRESS", "OWNER_ADDR"],
-    "mail_city":       ["MAIL_CITY", "OWNER_CITY"],
-    "mail_state":      ["MAIL_STATE", "OWNER_STATE"],
-    "mail_zip":        ["MAIL_ZIP", "OWNER_ZIP"],
-    "subdivision":     ["SUBDIVISION", "SUB_NAME"],
-    "use_code":        ["USE_CODE", "LAND_USE", "PROP_TYPE"],
-    "use_desc":        ["USE_DESC", "USE_DESCRIPTION"],
-    "year_built":      ["YEAR_BUILT", "YRBLT"],
-    "living_sqft":     ["LIV_SQFT", "LIVING_SQFT", "SQFT"],
-    "lot_sqft":        ["LOT_SQFT", "LOT_SIZE", "LAND_SIZE"],
+    "site_zip":        ["SITUS_ZIP", "SITE_ZIP", "ZIP", "ZIPCODE"],
+    "mail_address":    ["MAIL_ADDR", "MAILING_ADDRESS", "OWNER_ADDR", "MAIL_ADDRESS", "TAXPAYER_ADDR"],
+    "mail_city":       ["MAIL_CITY", "OWNER_CITY", "TAXPAYER_CITY"],
+    "mail_state":      ["MAIL_STATE", "OWNER_STATE", "TAXPAYER_STATE"],
+    "mail_zip":        ["MAIL_ZIP", "OWNER_ZIP", "TAXPAYER_ZIP"],
+    "subdivision":     ["SUBDIVISION", "SUB_NAME", "SUBNAME"],
+    "use_code":        ["USE_CODE", "LAND_USE", "PROP_TYPE", "PARCEL_USE", "PUC"],
+    "use_desc":        ["USE_DESC", "USE_DESCRIPTION", "LANDCLASS", "IMPCLASS"],
+    "year_built":      ["YEAR_BUILT", "YRBLT", "YEAR_BLT"],
+    "living_sqft":     ["LIV_SQFT", "LIVING_SQFT", "SQFT", "LIVING_AREA"],
+    "lot_sqft":        ["LOT_SQFT", "LOT_SIZE", "LAND_SIZE", "ACREAGE"],
     "bedrooms":        ["BEDROOMS", "BEDS"],
     "bathrooms":       ["BATHROOMS", "BATHS"],
-    "fcv":             ["FCV", "FULL_CASH_VALUE"],
-    "lpv":             ["LPV", "LIMITED_VALUE"],
-    "last_sale_date":  ["SALE_DATE", "DEED_DATE"],
-    "last_sale_price": ["SALE_PRICE", "DEED_PRICE"],
+    "fcv":             ["FCV", "FULL_CASH_VALUE", "FULLCASH"],
+    "lpv":             ["LPV", "LIMITED_VALUE", "LIMITED_PROPERTY_VALUE"],
+    "last_sale_date":  ["SALE_DATE", "DEED_DATE", "LAST_SALE"],
+    "last_sale_price": ["SALE_PRICE", "DEED_PRICE", "LAST_SALE_AMT"],
+    "latitude":        ["LATITUDE", "LAT"],
+    "longitude":       ["LONGITUDE", "LON", "LONG"],
 }
 
 UNIFIED_FIELDS = list(FIELD_MAP.keys()) + ["county", "source_objectid",
                                            "absentee", "out_of_state", "apn_norm"]
 
 
-def normalize(row: dict) -> dict:
-    out = {"county": "Pima", "source_objectid": row.get("OBJECTID")}
+def normalize(row: dict, oid_field: str) -> dict:
+    out = {"county": "Pima", "source_objectid": row.get(oid_field)}
     for dest, candidates in FIELD_MAP.items():
         val = None
         for cand in candidates:
@@ -186,21 +204,20 @@ def normalize(row: dict) -> dict:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Pima County parcel master scraper")
-    ap.add_argument("--where", default="1=1")
+    ap = argparse.ArgumentParser(description="Pima County parcel master scraper v2")
     ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--url", default=None, help="Override parcel layer base URL (no /query)")
+    ap.add_argument("--url", default=None)
     args = ap.parse_args()
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    query_url, _ = pick_endpoint(args.url)
+    endpoint = pick_best_endpoint(args.url)
 
     count = 0
     with OUT_JSONL.open("w", encoding="utf-8") as jf, OUT_CSV.open("w", newline="", encoding="utf-8") as cf:
         writer = csv.DictWriter(cf, fieldnames=UNIFIED_FIELDS, extrasaction="ignore")
         writer.writeheader()
-        for raw in iter_all(query_url, args.where, args.limit):
-            rec = normalize(raw)
+        for raw in iter_all(endpoint, args.limit):
+            rec = normalize(raw, endpoint["oid"])
             jf.write(json.dumps(rec, default=str) + "\n")
             writer.writerow(rec)
             count += 1
