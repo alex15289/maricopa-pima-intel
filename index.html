@@ -687,6 +687,15 @@
       </div>
 
       <div class="filter-group">
+        <h3>🎯 Deal Intent</h3>
+        <div class="chip-row" id="f-intent">
+          <span class="chip" data-val="foreclosure_risk">🔥 Foreclosure Risk</span>
+          <span class="chip" data-val="lawsuit_risk">⚖️ Lawsuit Risk</span>
+          <span class="chip" data-val="lien_pressure">💰 Lien Pressure</span>
+        </div>
+      </div>
+
+      <div class="filter-group">
         <h3>Core Flags</h3>
         <div class="chip-row" id="f-flags">
           <span class="chip" data-val="absentee">Absentee</span>
@@ -910,6 +919,7 @@ const state = {
   filters: {
     activeTab:    "all",  // "all" | "Maricopa" | "Pima"
     quickList:    "all",  // "all" | "new" | "preforeclosure" | "estate" | "taxlien" | "absentee_equity" | "high_equity" | "stacked"
+    intent:       new Set(),   // "foreclosure_risk" | "lawsuit_risk" | "lien_pressure"
     signals:      new Set(),
     flags:        new Set(),
     propertyTypes: new Set(),
@@ -1209,6 +1219,7 @@ function bindChipGroup(selector, stateKey) {
   });
 }
 bindChipGroup("#f-proptype",  "propertyTypes");
+bindChipGroup("#f-intent",    "intent");
 bindChipGroup("#f-distress",  "distress");
 bindChipGroup("#f-lifeevent", "lifeEvent");
 bindChipGroup("#f-holding",   "holding");
@@ -1243,6 +1254,7 @@ function matches(lead) {
   const ef = lead.enrichment_flags || {};
   const hasFlag = name => !!(lf[name] || ef[name]);
   const hasSignal = type => (lead.signals || []).some(s => s.type === type);
+  const combos = lead.combos || [];
 
   // Quick Lists gate — overrides standard filtering with a curated preset
   if (f.quickList && f.quickList !== "all") {
@@ -1275,6 +1287,47 @@ function matches(lead) {
 
   // Property type filter (OR within group)
   if (f.propertyTypes.size > 0 && !f.propertyTypes.has(lead.property_type)) return false;
+
+  // Deal Intent filters — composite "signal OR flag" groupings
+  // Each selected intent must fire at least one of its conditions (AND between intents, OR within intent)
+  if (f.intent.size > 0) {
+    for (const intent of f.intent) {
+      let intentHit = false;
+      switch (intent) {
+        case "foreclosure_risk":
+          // Active foreclosure signals OR leading indicators (tax delinquent + distressed combos)
+          intentHit = hasSignal("Notice of Trustee Sale")
+                   || hasSignal("Sheriffs Deed")
+                   || hasSignal("Tax Delinquent")
+                   || hasSignal("Federal Tax Lien")
+                   || hasSignal("Bankruptcy")
+                   || ef.negative_equity
+                   || combos.includes("tired_oos_landlord");
+          break;
+        case "lawsuit_risk":
+          // Active lawsuits / pending legal action on title or owner
+          intentHit = hasSignal("Lis Pendens")
+                   || hasSignal("Judgment Lien")
+                   || hasSignal("Divorce")
+                   || hasSignal("Bankruptcy")
+                   || hasSignal("Probate Case");
+          break;
+        case "lien_pressure":
+          // Any recorded lien creating seller motivation
+          intentHit = hasSignal("Federal Tax Lien")
+                   || hasSignal("State Tax Lien")
+                   || hasSignal("City Lien")
+                   || hasSignal("Medicaid Lien")
+                   || hasSignal("Hospital Lien")
+                   || hasSignal("Mechanics Lien")
+                   || hasSignal("HOA Lien")
+                   || hasSignal("Judgment Lien")
+                   || hasSignal("Tax Delinquent");
+          break;
+      }
+      if (!intentHit) return false;
+    }
+  }
 
   // Signal type filter
   if (f.signals.size > 0) {
