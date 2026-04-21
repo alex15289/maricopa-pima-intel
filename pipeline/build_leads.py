@@ -1,32 +1,26 @@
 """
-Pipeline: build the ranked motivated seller lead list.
+Pipeline: build the ranked motivated seller lead list — full enrichment edition.
 
 Takes:
-    data/maricopa_parcels.jsonl       (parcel master — Maricopa)
-    data/pima_parcels.jsonl           (parcel master — Pima)
-    data/maricopa_recorder_raw.jsonl  (motivated-seller signals — Maricopa)
-    data/pima_recorder_raw.jsonl      (motivated-seller signals — Pima)
-    [optional] data/tax_delinquent_*.jsonl,
-               data/code_violations_*.jsonl,
-               data/probate_*.jsonl
+    data/maricopa_parcels.jsonl     (parcel master — Maricopa)
+    data/pima_parcels.jsonl         (parcel master — Pima)
+    data/maricopa_recorder_raw.jsonl, data/pima_recorder_raw.jsonl   (optional signals)
+    data/tax_delinquent_*.jsonl, data/probate_*.jsonl,
+    data/code_violations_*.jsonl    (optional signals)
 
 Produces:
-    data/leads.json                   (dashboard input — ranked, stacked)
+    data/leads.json                 (dashboard input — ranked, stacked, enriched)
 
-Core logic:
-    1. Load parcel master into APN-keyed dict (one per county)
-    2. For each signal, resolve property via APN -> parcel master
-       If no APN, fall back to owner-name match (grantor or decedent)
-    3. Stack multiple signals for the same APN into a single lead
-    4. Score each lead by weighted signal contributions + property flags
-    5. Sort by score descending, write leads.json
+Lead generation runs in two modes merged into one output:
+  (a) Signal-stacked leads: properties with at least one recorder/tax signal
+  (b) Flag-only leads: properties with strong enrichment flags but no external signals
 
-Score is tunable via WEIGHTS at top of file.
+Everything is scored, stacked by APN, enriched with the 22-flag module, and
+property-type classified. Output is sorted by total score descending.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import re
@@ -35,6 +29,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from pipeline.enrich_leads import (
+    enrich_lead,
+    build_owner_index,
+    classify_property_type,
+    PROPERTY_TYPES,
+    ENRICHMENT_WEIGHTS,
+)
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 
@@ -42,11 +44,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
                     datefmt="%H:%M:%S")
 log = logging.getLogger("pipeline")
 
+
 # -----------------------------------------------------------------------------
-# Scoring weights — tune these for your campaign.
+# Scoring weights
 # -----------------------------------------------------------------------------
-WEIGHTS = {
-    # Signal-type base weights (max signal score, decays slightly with age)
+SIGNAL_WEIGHTS = {
+    # External recorded signals — highest value
     "Notice of Trustee Sale":  55,
     "Lis Pendens":             35,
     "Affidavit of Death":      50,
@@ -58,321 +61,318 @@ WEIGHTS = {
     "Tax Delinquent":          40,
     "Code Violation":          20,
     "Probate Case":            45,
-
-    # Owner-name flags
-    "flag_estate_owner":       40,
-    "flag_cash_buyer":         -5,
-    "flag_trust_only":         15,
-    "flag_likely_vacant":      30,
-
-    # Property flags (static — added once per lead regardless of signals)
-    "flag_absentee":           10,
-    "flag_out_of_state":       15,
-    "flag_long_hold":          8,    # owned 10+ years
-    "flag_no_site_address":   -20,   # raw land / junk parcel — demote
-
-    # Stacking bonuses
-    "stack_2_signals":         10,
-    "stack_3_signals":         25,
-    "stack_4plus_signals":     45,
-
-    # Equity tier bonuses (equity = FCV - last sale price)
-    "equity_50k":               5,
-    "equity_150k":             15,
-    "equity_300k":             30,
+    "Judgment Lien":           25,
+    "Bankruptcy":              30,
+    "Divorce":                 25,
 }
 
-# Signal age decay: lose 1 point per 30 days over 180 days old (floor 0 off base).
-AGE_DECAY_PER_MONTH = 1
-AGE_DECAY_START_DAYS = 180
+# Original owner-name / parcel flags (legacy v1 flags)
+LEGACY_FLAG_WEIGHTS = {
+    "flag_estate_owner":       40,
+    "flag_entity_owner":       -5,
+    "flag_trust_only":         15,
+    "flag_likely_vacant":      30,
+    "flag_absentee":           12,
+    "flag_out_of_state":       15,
+    "flag_long_hold":           8,
+}
+
+# Stacking bonus per additional signal on same APN
+STACK_BONUS = 10
+
+# Equity bonuses
+EQUITY_BRACKETS = [
+    (500_000, 40),
+    (300_000, 30),
+    (150_000, 20),
+    (50_000, 10),
+]
 
 
-def load_jsonl(path: Path) -> list:
-    if not path.exists():
-        log.info("missing (skipping): %s", path)
-        return []
-    rows = []
-    with path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                rows.append(json.loads(line))
-    log.info("loaded %d rows from %s", len(rows), path.name)
-    return rows
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+ESTATE_RE  = re.compile(r"\b(ESTATE\s+OF|EST\s+OF|HEIRS\s+OF|EST\.|DECEASED|\(DEC\))\b", re.I)
+ENTITY_RE  = re.compile(r"\b(LLC|L\.L\.C\.|INC|INCORPORATED|LTD|LIMITED|L\.P\.|LP|HOLDINGS|INVESTMENTS|PROPERTIES|GROUP|PARTNERS|PARTNERSHIP|CORP|CORPORATION)\b", re.I)
+TRUST_RE   = re.compile(r"\bTRUST\b|\bTR\b|\bTRS\b|\bTRUSTEE\b|FAMILY\s+TR\b", re.I)
+BANK_RE    = re.compile(r"BANK|FARGO|CHASE|CITI|CAPITAL|TITLE", re.I)
 
 
-def build_parcel_index(parcel_rows: list) -> tuple[dict, dict]:
-    """Returns (by_apn, by_owner_name_lower)."""
-    by_apn: dict = {}
-    by_owner: dict = defaultdict(list)
-    for p in parcel_rows:
-        key = p.get("apn_norm") or p.get("apn")
-        if key:
-            by_apn[key] = p
-        owner = (p.get("owner") or "").strip().upper()
-        if owner:
-            by_owner[owner].append(p)
-    return by_apn, dict(by_owner)
-
-
-def normalize_apn(raw: Optional[str]) -> Optional[str]:
-    if not raw:
-        return None
-    return re.sub(r"[^A-Z0-9]", "", raw.upper())
-
-
-def resolve_parcel(signal: dict, by_apn: dict, by_owner: dict) -> Optional[dict]:
-    """Find the parcel for this signal. APN first, owner name fallback."""
-    for apn in signal.get("apns_found") or []:
-        norm = normalize_apn(apn)
-        if norm and norm in by_apn:
-            return by_apn[norm]
-    # Fallback: grantor name match (single unique hit only — multiple owners
-    # with the same name are ambiguous and get skipped to avoid false pairs).
-    for name_field in ("grantor", "decedent", "owner"):
-        name = (signal.get(name_field) or "").strip().upper()
-        if name and name in by_owner and len(by_owner[name]) == 1:
-            return by_owner[name][0]
-    return None
-
-
-
-
-# Owner-name pattern detection
-ESTATE_RE      = re.compile(r"\b(ESTATE\s+OF|EST\s+OF|HEIRS\s+OF|EST\.)\b|\bEST\b\s+OF|DECEASED|\(DEC\)")
-ENTITY_RE      = re.compile(r"\b(LLC|L\.L\.C\.|INC|INCORPORATED|LTD|LIMITED|L\.P\.|LP|HOLDINGS|INVESTMENTS|PROPERTIES|GROUP|PARTNERS|PARTNERSHIP|CORP|CORPORATION)\b")
-TRUST_RE       = re.compile(r"\bTRUST\b|\bTR\b|\bTRS\b|\bTRUSTEE\b|FAMILY\s+TR\b")
-BANK_TRUST_RE  = re.compile(r"BANK|TITLE|FARGO|CHASE|CITI|TRUSTEE\s+FOR|CAPITAL")
-
-def is_estate_owner(owner):
-    return bool(owner and ESTATE_RE.search(owner.upper()))
-
-def is_entity_owner(owner):
-    return bool(owner and ENTITY_RE.search(owner.upper()))
-
-def is_trust_owner(owner):
-    if not owner: return False
-    up = owner.upper()
-    if BANK_TRUST_RE.search(up): return False
-    return bool(TRUST_RE.search(up)) and not is_entity_owner(owner)
-
-def is_likely_vacant(parcel, now):
-    if not parcel.get("out_of_state"): return False
-    if not long_hold(parcel, now): return False
-    try: yb = int(parcel.get("year_built") or 0)
-    except: yb = 0
-    return yb > 0 and (now.year - yb) >= 30
-
-def parse_money(raw):
+def parse_money(raw) -> float:
     if raw is None: return 0.0
     if isinstance(raw, (int, float)): return float(raw)
     s = str(raw).strip().replace(",", "").replace("$", "").replace(" ", "")
     try: return float(s) if s else 0.0
     except: return 0.0
 
+
+def parse_year(raw) -> int:
+    if raw is None: return 0
+    try: return int(str(raw).strip()[:4])
+    except: return 0
+
+
 def parse_record_date(s: Optional[str]) -> Optional[datetime]:
-    if not s:
-        return None
-    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y", "%Y/%m/%d"):
-        try:
-            return datetime.strptime(s.strip()[:10], fmt)
-        except ValueError:
-            continue
+    if not s: return None
+    s = str(s).strip()
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y%m%d"):
+        try: return datetime.strptime(s[:10], fmt)
+        except: pass
+    # epoch millis
+    try:
+        if s.isdigit() and len(s) >= 10:
+            return datetime.fromtimestamp(int(s[:10]))
+    except: pass
     return None
 
 
-def signal_score(signal: dict, now: datetime) -> int:
-    base = WEIGHTS.get(signal.get("signal_type", ""), 5)
-    d = parse_record_date(signal.get("record_date"))
-    if not d:
-        return base
-    age_days = (now - d).days
-    if age_days <= AGE_DECAY_START_DAYS:
-        return base
-    months_over = (age_days - AGE_DECAY_START_DAYS) // 30
-    return max(0, base - months_over * AGE_DECAY_PER_MONTH)
+def is_estate_owner(owner: Optional[str]) -> bool:
+    return bool(owner and ESTATE_RE.search(owner))
+
+
+def is_entity_owner(owner: Optional[str]) -> bool:
+    return bool(owner and ENTITY_RE.search(owner))
+
+
+def is_trust_owner(owner: Optional[str]) -> bool:
+    if not owner: return False
+    if BANK_RE.search(owner): return False
+    return bool(TRUST_RE.search(owner)) and not is_entity_owner(owner)
+
+
+def is_long_hold(parcel: dict, now: datetime) -> bool:
+    dt = parse_record_date(parcel.get("last_sale_date"))
+    if not dt: return False
+    return (now - dt).days / 365.25 >= 10
 
 
 def equity_estimate(parcel: dict) -> float:
-    fcv  = parse_money(parcel.get("fcv"))
+    fcv = parse_money(parcel.get("fcv"))
     last = parse_money(parcel.get("last_sale_price"))
     return max(0.0, fcv - last)
 
 
-def long_hold(parcel: dict, now: datetime) -> bool:
-    s = parcel.get("last_sale_date")
-    d = parse_record_date(s) if isinstance(s, str) else None
-    if not d:
-        return False
-    return (now - d).days >= 365 * 10
+def equity_bonus(equity: float) -> int:
+    for threshold, bonus in EQUITY_BRACKETS:
+        if equity >= threshold:
+            return bonus
+    return 0
 
 
-def build_leads(signals: list, parcels_by_county: dict) -> list:
-    """Stack signals by (county, apn) and score each resulting lead."""
+# -----------------------------------------------------------------------------
+# Load parcel master
+# -----------------------------------------------------------------------------
+def load_parcels(path: Path) -> list:
+    if not path.exists():
+        log.warning(f"missing parcel file: {path}")
+        return []
+    out = []
+    with path.open() as f:
+        for line in f:
+            try: out.append(json.loads(line))
+            except: pass
+    log.info(f"loaded {len(out):,} parcels from {path.name}")
+    return out
+
+
+def load_signals(path: Path, signal_type: str = None) -> list:
+    """Load a signal jsonl file. If signal_type given, tag all rows with it."""
+    if not path.exists():
+        log.info(f"missing (skipping): {path.name}")
+        return []
+    out = []
+    with path.open() as f:
+        for line in f:
+            try:
+                rec = json.loads(line)
+                if signal_type and "signal_type" not in rec:
+                    rec["signal_type"] = signal_type
+                out.append(rec)
+            except: pass
+    log.info(f"loaded {len(out):,} signals from {path.name}")
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Main pipeline
+# -----------------------------------------------------------------------------
+def build(min_score: int = 30, limit_dashboard: int = 10000) -> dict:
     now = datetime.utcnow()
 
-    # Group signals by (county, apn)
-    grouped: dict = defaultdict(list)
-    unresolved = 0
+    maricopa_parcels = load_parcels(DATA_DIR / "maricopa_parcels.jsonl")
+    pima_parcels     = load_parcels(DATA_DIR / "pima_parcels.jsonl")
+    all_parcels = maricopa_parcels + pima_parcels
 
-    for sig in signals:
+    # Per-county owner concentration index (for bulk-owner flags)
+    owner_counts_maricopa = build_owner_index(maricopa_parcels)
+    owner_counts_pima     = build_owner_index(pima_parcels)
+
+    # APN lookup for signal resolution
+    apn_index = {}
+    for p in all_parcels:
+        key = (p.get("county"), (p.get("apn_norm") or p.get("apn") or "").upper())
+        if key[1]:
+            apn_index[key] = p
+
+    # Load all optional signal sources
+    all_signals = []
+    all_signals += load_signals(DATA_DIR / "maricopa_recorder_raw.jsonl")
+    all_signals += load_signals(DATA_DIR / "pima_recorder_raw.jsonl")
+    all_signals += load_signals(DATA_DIR / "tax_delinquent_maricopa.jsonl", "Tax Delinquent")
+    all_signals += load_signals(DATA_DIR / "tax_delinquent_pima.jsonl",     "Tax Delinquent")
+    all_signals += load_signals(DATA_DIR / "code_violations_maricopa.jsonl","Code Violation")
+    all_signals += load_signals(DATA_DIR / "code_violations_pima.jsonl",    "Code Violation")
+    all_signals += load_signals(DATA_DIR / "probate_maricopa.jsonl",        "Probate Case")
+    all_signals += load_signals(DATA_DIR / "probate_pima.jsonl",            "Probate Case")
+    log.info(f"total signals: {len(all_signals):,}")
+
+    # Group signals by APN
+    signals_by_apn = defaultdict(list)
+    unresolved = 0
+    for sig in all_signals:
+        apn = (sig.get("apn_norm") or sig.get("apn") or "").upper()
         county = sig.get("county")
-        idx = parcels_by_county.get(county)
-        if not idx:
-            continue
-        by_apn, by_owner = idx
-        parcel = resolve_parcel(sig, by_apn, by_owner)
-        if not parcel:
+        if not apn:
             unresolved += 1
             continue
-        key = (county, parcel.get("apn_norm"))
-        grouped[key].append((sig, parcel))
+        key = (county, apn)
+        if key not in apn_index:
+            unresolved += 1
+            continue
+        signals_by_apn[key].append(sig)
 
-    log.info("grouped %d signals into %d unique properties (%d unresolved)",
-             sum(len(v) for v in grouped.values()), len(grouped), unresolved)
-
+    # Build leads: every parcel that either has signals OR has strong flags
     leads = []
-    for (county, apn_norm), entries in grouped.items():
-        parcel = entries[0][1]
-        sigs = [e[0] for e in entries]
+    parcels_checked = 0
+    for p in all_parcels:
+        parcels_checked += 1
+        if parcels_checked % 200000 == 0:
+            log.info(f"processed {parcels_checked:,} parcels...")
+
+        county = p.get("county")
+        apn = (p.get("apn_norm") or p.get("apn") or "").upper()
+        key = (county, apn)
+        parcel_signals = signals_by_apn.get(key, [])
+
+        # Run enrichment (22 new flags + property type)
+        counts = owner_counts_maricopa if county == "Maricopa" else owner_counts_pima
+        enrichment = enrich_lead(p, counts, now)
+
+        # Compute legacy flags
+        legacy_flags = {}
+        if is_estate_owner(p.get("owner")):    legacy_flags["estate_owner"] = True
+        if is_entity_owner(p.get("owner")):    legacy_flags["entity_owner"] = True
+        if is_trust_owner(p.get("owner")):     legacy_flags["family_trust"] = True
+        if p.get("absentee"):                  legacy_flags["absentee"] = True
+        if p.get("out_of_state"):              legacy_flags["out_of_state"] = True
+        if is_long_hold(p, now):               legacy_flags["long_hold"] = True
 
         # Score components
-        signal_scores = [signal_score(s, now) for s in sigs]
-        signal_total = sum(signal_scores)
+        signal_score = 0
+        signal_entries = []
+        for sig in parcel_signals:
+            stype = sig.get("signal_type", "")
+            w = SIGNAL_WEIGHTS.get(stype, 5)
+            signal_score += w
+            signal_entries.append({
+                "type": stype,
+                "date": sig.get("record_date") or sig.get("filed_date"),
+                "doc_number": sig.get("doc_number") or sig.get("case_number"),
+                "amount": sig.get("amount"),
+            })
+        # Stacking bonus
+        if len(parcel_signals) > 1:
+            signal_score += STACK_BONUS * (len(parcel_signals) - 1)
 
-        flag_score = 0
-        if parcel.get("absentee"):      flag_score += WEIGHTS["flag_absentee"]
-        if parcel.get("out_of_state"):  flag_score += WEIGHTS["flag_out_of_state"]
-        if long_hold(parcel, now):      flag_score += WEIGHTS["flag_long_hold"]
-        if not parcel.get("site_address"):
-            flag_score += WEIGHTS["flag_no_site_address"]
+        legacy_score = 0
+        if legacy_flags.get("estate_owner"):  legacy_score += LEGACY_FLAG_WEIGHTS["flag_estate_owner"]
+        if legacy_flags.get("entity_owner"):  legacy_score += LEGACY_FLAG_WEIGHTS["flag_entity_owner"]
+        if legacy_flags.get("family_trust"):  legacy_score += LEGACY_FLAG_WEIGHTS["flag_trust_only"]
+        if legacy_flags.get("absentee"):      legacy_score += LEGACY_FLAG_WEIGHTS["flag_absentee"]
+        if legacy_flags.get("out_of_state"):  legacy_score += LEGACY_FLAG_WEIGHTS["flag_out_of_state"]
+        if legacy_flags.get("long_hold"):     legacy_score += LEGACY_FLAG_WEIGHTS["flag_long_hold"]
 
-        estate_flag       = is_estate_owner(parcel.get("owner"))
-        entity_flag       = is_entity_owner(parcel.get("owner"))
-        trust_flag        = is_trust_owner(parcel.get("owner"))
-        likely_vacant_flag = is_likely_vacant(parcel, now)
-        if estate_flag:        flag_score += WEIGHTS["flag_estate_owner"]
-        if entity_flag:        flag_score += WEIGHTS["flag_cash_buyer"]
-        if trust_flag:         flag_score += WEIGHTS["flag_trust_only"]
-        if likely_vacant_flag: flag_score += WEIGHTS["flag_likely_vacant"]
+        enrichment_score = enrichment["enrichment_score"]
+        equity = equity_estimate(p)
+        eq_bonus = equity_bonus(equity)
 
-        stack_bonus = 0
-        n = len(sigs)
-        if n == 2:    stack_bonus = WEIGHTS["stack_2_signals"]
-        elif n == 3:  stack_bonus = WEIGHTS["stack_3_signals"]
-        elif n >= 4:  stack_bonus = WEIGHTS["stack_4plus_signals"]
+        total_score = signal_score + legacy_score + enrichment_score + eq_bonus
 
-        equity = equity_estimate(parcel)
-        equity_bonus = 0
-        if equity >= 300_000:   equity_bonus = WEIGHTS["equity_300k"]
-        elif equity >= 150_000: equity_bonus = WEIGHTS["equity_150k"]
-        elif equity >=  50_000: equity_bonus = WEIGHTS["equity_50k"]
+        # Filter: only include if meets min_score threshold
+        if total_score < min_score:
+            continue
 
-        total = signal_total + flag_score + stack_bonus + equity_bonus
+        # Only residential property types by default (can be overridden via dashboard)
+        # but include commercial if it has signals or very high scores
+        prop_type = enrichment["property_type"]
+        is_resi = PROPERTY_TYPES.get(prop_type, {}).get("residential", False)
+        if not is_resi and not parcel_signals and total_score < 60:
+            continue  # drop low-scoring commercial noise
 
         lead = {
-            # Identity
-            "county":         county,
-            "apn":            parcel.get("apn"),
-            "apn_norm":       apn_norm,
-            # Property
-            "owner":          parcel.get("owner"),
-            "owner_2":        parcel.get("owner_2"),
-            "site_address":   parcel.get("site_address"),
-            "site_city":      parcel.get("site_city"),
-            "site_zip":       parcel.get("site_zip"),
-            "mail_address":   parcel.get("mail_address"),
-            "mail_city":      parcel.get("mail_city"),
-            "mail_state":     parcel.get("mail_state"),
-            "mail_zip":       parcel.get("mail_zip"),
-            "use_desc":       parcel.get("use_desc"),
-            "year_built":     parcel.get("year_built"),
-            "living_sqft":    parcel.get("living_sqft"),
-            "lot_sqft":       parcel.get("lot_sqft"),
-            "bedrooms":       parcel.get("bedrooms"),
-            "bathrooms":      parcel.get("bathrooms"),
-            "fcv":            parcel.get("fcv"),
-            "lpv":            parcel.get("lpv"),
-            "last_sale_date": parcel.get("last_sale_date"),
-            "last_sale_price":parcel.get("last_sale_price"),
-            "absentee":       parcel.get("absentee"),
-            "out_of_state":   parcel.get("out_of_state"),
-            "estate_owner":   estate_flag,
-            "cash_buyer":     entity_flag,
-            "family_trust":   trust_flag,
-            "likely_vacant":  likely_vacant_flag,
-            "long_hold":      long_hold(parcel, now),
-            # Signals (stacked)
-            "signal_count":   n,
-            "signals":        [
-                {
-                    "type":     s.get("signal_type"),
-                    "doc_code": s.get("doc_code"),
-                    "date":     s.get("record_date"),
-                    "doc_url":  s.get("doc_url"),
-                    "grantor":  s.get("grantor"),
-                    "grantee":  s.get("grantee"),
-                }
-                for s in sigs
-            ],
-            # Score breakdown
-            "score":          int(total),
-            "score_parts":    {
-                "signals":   signal_total,
-                "flags":     flag_score,
-                "stack":     stack_bonus,
-                "equity":    equity_bonus,
+            "county":           county,
+            "apn":              p.get("apn"),
+            "apn_norm":         p.get("apn_norm"),
+            "owner":            p.get("owner"),
+            "owner_2":          p.get("owner_2"),
+            "site_address":     p.get("site_address"),
+            "site_city":        p.get("site_city"),
+            "site_zip":         p.get("site_zip"),
+            "mail_address":     p.get("mail_address"),
+            "mail_city":        p.get("mail_city"),
+            "mail_state":       p.get("mail_state"),
+            "mail_zip":         p.get("mail_zip"),
+            "use_code":         p.get("use_code"),
+            "use_desc":         p.get("use_desc"),
+            "property_type":    prop_type,
+            "year_built":       p.get("year_built"),
+            "living_sqft":      p.get("living_sqft"),
+            "lot_sqft":         p.get("lot_sqft"),
+            "fcv":              p.get("fcv"),
+            "lpv":              p.get("lpv"),
+            "last_sale_date":   p.get("last_sale_date"),
+            "last_sale_price":  p.get("last_sale_price"),
+            "latitude":         p.get("latitude"),
+            "longitude":        p.get("longitude"),
+            "equity_est":       int(equity),
+            # Flags
+            "legacy_flags":     legacy_flags,
+            "enrichment_flags": enrichment["enrichment_flags"],
+            # Signals
+            "signals":          signal_entries,
+            "signal_count":     len(signal_entries),
+            # Scoring breakdown
+            "score":            int(total_score),
+            "score_parts": {
+                "signals":    int(signal_score),
+                "legacy":     int(legacy_score),
+                "enrichment": int(enrichment_score),
+                "equity":     int(eq_bonus),
             },
-            "equity_est":     int(equity),
         }
         leads.append(lead)
 
+    # Sort by score desc
     leads.sort(key=lambda x: x["score"], reverse=True)
-    return leads
+    log.info(f"produced {len(leads):,} ranked leads (total, before 10k cap)")
+    if leads:
+        log.info(f"top scores: {[l['score'] for l in leads[:5]]}")
 
-
-def main():
-    ap = argparse.ArgumentParser(description="Build ranked motivated seller lead list")
-    ap.add_argument("--out", default=str(DATA_DIR / "leads.json"))
-    args = ap.parse_args()
-
-    # Parcel masters
-    mar_p = load_jsonl(DATA_DIR / "maricopa_parcels.jsonl")
-    pim_p = load_jsonl(DATA_DIR / "pima_parcels.jsonl")
-    parcels_by_county = {
-        "Maricopa": build_parcel_index(mar_p),
-        "Pima":     build_parcel_index(pim_p),
+    out = {
+        "generated_at": now.isoformat(timespec="seconds") + "Z",
+        "counties":     ["Maricopa", "Pima"],
+        "total_leads":  len(leads),
+        "unresolved_signals": unresolved,
+        "property_types": PROPERTY_TYPES,
+        "flag_weights": {**LEGACY_FLAG_WEIGHTS, **ENRICHMENT_WEIGHTS, **SIGNAL_WEIGHTS},
+        "leads":        leads[:limit_dashboard],
     }
 
-    # Signals (add more files here as you build them — tax delinquent,
-    # code violations, probate, etc. All must share the unified signal schema.)
-    signals = []
-    signals.extend(load_jsonl(DATA_DIR / "maricopa_recorder_raw.jsonl"))
-    signals.extend(load_jsonl(DATA_DIR / "pima_recorder_raw.jsonl"))
-    signals.extend(load_jsonl(DATA_DIR / "tax_delinquent_maricopa.jsonl"))
-    signals.extend(load_jsonl(DATA_DIR / "tax_delinquent_pima.jsonl"))
-    signals.extend(load_jsonl(DATA_DIR / "code_violations_maricopa.jsonl"))
-    signals.extend(load_jsonl(DATA_DIR / "code_violations_pima.jsonl"))
-    signals.extend(load_jsonl(DATA_DIR / "probate_maricopa.jsonl"))
-    signals.extend(load_jsonl(DATA_DIR / "probate_pima.jsonl"))
-
-    log.info("total signals: %d", len(signals))
-
-    leads = build_leads(signals, parcels_by_county)
-    log.info("produced %d ranked leads", len(leads))
-
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("w", encoding="utf-8") as f:
-        json.dump({
-            "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-            "counties":     list(parcels_by_county.keys()),
-            "total_leads":  len(leads),
-            "leads":        leads,
-        }, f, indent=2, default=str)
-
-    log.info("wrote -> %s", out)
+    out_path = DATA_DIR / "leads.json"
+    out_path.write_text(json.dumps(out, default=str))
+    log.info(f"wrote -> {out_path}  ({len(leads[:limit_dashboard]):,} leads in dashboard file)")
+    return out
 
 
 if __name__ == "__main__":
-    main()
+    build()

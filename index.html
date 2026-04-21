@@ -357,7 +357,22 @@
       </div>
 
       <div class="filter-group">
-        <h3>Flags</h3>
+        <h3>Property Type</h3>
+        <div class="chip-row" id="f-proptype">
+          <span class="chip" data-val="sfr">🏠 SFR</span>
+          <span class="chip" data-val="townhome_condo">🏘️ Condo/TH</span>
+          <span class="chip" data-val="mobile_home">🚐 Mobile</span>
+          <span class="chip" data-val="multifamily_2_4">🏢 2-4 unit</span>
+          <span class="chip" data-val="multifamily_5_20">🏬 5-20 unit</span>
+          <span class="chip" data-val="multifamily_20p">🏙️ 20+ unit</span>
+          <span class="chip" data-val="vacant_land">🌾 Vacant</span>
+          <span class="chip" data-val="rural_acreage">🌵 Rural</span>
+          <span class="chip" data-val="commercial">🏪 Commercial</span>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <h3>Core Flags</h3>
         <div class="chip-row" id="f-flags">
           <span class="chip" data-val="absentee">Absentee</span>
           <span class="chip" data-val="out_of_state">Out of State</span>
@@ -367,6 +382,59 @@
           <span class="chip" data-val="likely_vacant">Likely Vacant</span>
           <span class="chip" data-val="long_hold">10+ yr hold</span>
           <span class="chip" data-val="hide_cash_buyer">Hide LLC / Inc</span>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <h3>Distress</h3>
+        <div class="chip-row" id="f-distress">
+          <span class="chip" data-val="equity_gap_high">High Equity Gap</span>
+          <span class="chip" data-val="negative_equity">Underwater</span>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <h3>Life Event</h3>
+        <div class="chip-row" id="f-lifeevent">
+          <span class="chip" data-val="widow_indicator">Widow / Surv.</span>
+          <span class="chip" data-val="multi_owner_inheritance">Heirs / Multi</span>
+          <span class="chip" data-val="care_of_address">C/O Address</span>
+          <span class="chip" data-val="corporate_dissolved">Dormant LLC</span>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <h3>Holding Pattern</h3>
+        <div class="chip-row" id="f-holding">
+          <span class="chip" data-val="tired_landlord">Tired Landlord</span>
+          <span class="chip" data-val="accidental_landlord">Accidental LL</span>
+          <span class="chip" data-val="mailing_to_pobox">PO Box Mail</span>
+          <span class="chip" data-val="out_of_country">Out of Country</span>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <h3>Value Play</h3>
+        <div class="chip-row" id="f-value">
+          <span class="chip" data-val="cash_flow_candidate">Cash Flow</span>
+          <span class="chip" data-val="teardown_candidate">Teardown</span>
+          <span class="chip" data-val="hurricane_equity">Mega Equity</span>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <h3>Portfolio</h3>
+        <div class="chip-row" id="f-portfolio">
+          <span class="chip" data-val="bulk_owner_3plus">3+ Parcels</span>
+          <span class="chip" data-val="bulk_owner_10plus">10+ Parcels</span>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <h3>Sale Velocity</h3>
+        <div class="chip-row" id="f-velocity">
+          <span class="chip" data-val="never_sold">Never Sold</span>
+          <span class="chip" data-val="recent_underprice_sale">Under-Priced Sale</span>
         </div>
       </div>
 
@@ -519,9 +587,16 @@ const state = {
   filtered: [],
   selectedId: null,
   filters: {
-    counties: new Set(["Maricopa","Pima"]),
-    signals:  new Set(),
-    flags:    new Set(),
+    counties:     new Set(["Maricopa","Pima"]),
+    signals:      new Set(),
+    flags:        new Set(),
+    propertyTypes: new Set(),
+    distress:     new Set(),
+    lifeEvent:    new Set(),
+    holding:      new Set(),
+    valuePlay:    new Set(),
+    portfolio:    new Set(),
+    velocity:     new Set(),
     minScore: 0,
     minEquity: 0,
     search: "",
@@ -536,6 +611,22 @@ const $  = sel => document.querySelector(sel);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const fmt = n => n == null ? "—" : (typeof n === "number" ? n.toLocaleString() : String(n));
 const fmtM = n => !n ? "—" : "$" + Math.round(n).toLocaleString();
+
+// Property type metadata (mirrors Python PROPERTY_TYPES dict in enrich_leads.py)
+const PROP_TYPES = {
+  sfr:              { label: "Single Family",    icon: "🏠" },
+  townhome_condo:   { label: "Townhome / Condo", icon: "🏘️" },
+  mobile_home:      { label: "Mobile Home",      icon: "🚐" },
+  multifamily_2_4:  { label: "Multifamily 2-4",  icon: "🏢" },
+  multifamily_5_20: { label: "Multifamily 5-20", icon: "🏬" },
+  multifamily_20p:  { label: "Multifamily 20+",  icon: "🏙️" },
+  vacant_land:      { label: "Vacant Land",      icon: "🌾" },
+  rural_acreage:    { label: "Rural Acreage",    icon: "🌵" },
+  commercial:       { label: "Commercial",       icon: "🏪" },
+  industrial:       { label: "Industrial",       icon: "🏭" },
+  agricultural:     { label: "Agricultural",     icon: "🚜" },
+  other:            { label: "Other",            icon: "❓" },
+};
 
 /* ============================================================
    Data loading
@@ -608,6 +699,26 @@ $$("#f-flags .chip").forEach(el => {
     applyFilters();
   });
 });
+
+// Multi-select handler factory for new chip groups
+function bindChipGroup(selector, stateKey) {
+  $$(`${selector} .chip`).forEach(el => {
+    el.addEventListener("click", () => {
+      el.classList.toggle("active");
+      const v = el.dataset.val;
+      if (state.filters[stateKey].has(v)) state.filters[stateKey].delete(v);
+      else state.filters[stateKey].add(v);
+      applyFilters();
+    });
+  });
+}
+bindChipGroup("#f-proptype",  "propertyTypes");
+bindChipGroup("#f-distress",  "distress");
+bindChipGroup("#f-lifeevent", "lifeEvent");
+bindChipGroup("#f-holding",   "holding");
+bindChipGroup("#f-value",     "valuePlay");
+bindChipGroup("#f-portfolio", "portfolio");
+bindChipGroup("#f-velocity",  "velocity");
 $("#f-score").addEventListener("input", e => {
   state.filters.minScore = +e.target.value;
   $("#f-score-val").textContent = state.filters.minScore;
@@ -629,22 +740,51 @@ $("#f-search").addEventListener("input", e => {
 function matches(lead) {
   const f = state.filters;
   if (!f.counties.has(lead.county)) return false;
+
+  // Helper: check if a flag fired in either legacy_flags or enrichment_flags
+  const lf = lead.legacy_flags || {};
+  const ef = lead.enrichment_flags || {};
+  const hasFlag = name => !!(lf[name] || ef[name]);
+
+  // Property type filter (OR within group)
+  if (f.propertyTypes.size > 0 && !f.propertyTypes.has(lead.property_type)) return false;
+
+  // Signal type filter
   if (f.signals.size > 0) {
-    const leadTypes = new Set((lead.signals||[]).map(s=>s.type));
+    const leadTypes = new Set((lead.signals||[]).map(s => s.type));
     let hit = false;
     for (const t of f.signals) if (leadTypes.has(t)) { hit = true; break; }
     if (!hit) return false;
   }
-  if (f.flags.has("absentee")     && !lead.absentee)     return false;
-  if (f.flags.has("out_of_state") && !lead.out_of_state) return false;
-  if (f.flags.has("stacked")      && (lead.signal_count||0) < 2) return false;
-  if (f.flags.has("estate_owner") && !lead.estate_owner) return false;
-  if (f.flags.has("family_trust") && !lead.family_trust) return false;
-  if (f.flags.has("likely_vacant") && !lead.likely_vacant) return false;
-  if (f.flags.has("long_hold")    && !lead.long_hold)    return false;
-  if (f.flags.has("hide_cash_buyer") && lead.cash_buyer) return false;
+
+  // Core flags (backward compat + hide toggles)
+  if (f.flags.has("absentee")      && !lf.absentee)      return false;
+  if (f.flags.has("out_of_state")  && !lf.out_of_state)  return false;
+  if (f.flags.has("stacked")       && (lead.signal_count||0) < 2) return false;
+  if (f.flags.has("estate_owner")  && !lf.estate_owner)  return false;
+  if (f.flags.has("family_trust")  && !lf.family_trust)  return false;
+  if (f.flags.has("likely_vacant") && !ef.likely_vacant && !lf.likely_vacant) return false;
+  if (f.flags.has("long_hold")     && !lf.long_hold)     return false;
+  if (f.flags.has("hide_cash_buyer") && lf.entity_owner) return false;
+
+  // All category chip groups — require ALL selected chips in each group to fire
+  const checkGroup = (group) => {
+    if (group.size === 0) return true;
+    for (const flagName of group) {
+      if (!hasFlag(flagName)) return false;
+    }
+    return true;
+  };
+  if (!checkGroup(f.distress))   return false;
+  if (!checkGroup(f.lifeEvent))  return false;
+  if (!checkGroup(f.holding))    return false;
+  if (!checkGroup(f.valuePlay))  return false;
+  if (!checkGroup(f.portfolio))  return false;
+  if (!checkGroup(f.velocity))   return false;
+
   if ((lead.score||0) < f.minScore) return false;
   if ((lead.equity_est||0) < f.minEquity) return false;
+
   if (f.search) {
     const hay = [lead.apn, lead.owner, lead.site_address, lead.mail_address, lead.site_city]
                 .join(" ").toLowerCase();
@@ -700,6 +840,8 @@ function renderTable() {
     const stackTag = (l.signal_count||0) >= 2
       ? `<span class="signal-tag stack">×${l.signal_count}</span>` : "";
     const pct = Math.min(100, Math.round((l.score||0)/200*100));
+    const pt  = PROP_TYPES[l.property_type] || {};
+    const ptBadge = pt.icon ? `<span title="${pt.label||''}" style="margin-right:4px">${pt.icon}</span>` : "";
     return `
       <tr data-id="${l._id}" ${state.selectedId === l._id ? 'class="selected"' : ''}>
         <td>
@@ -709,7 +851,7 @@ function renderTable() {
         <td><span class="county-pill ${l.county}">${l.county?.[0]||"?"}</span></td>
         <td>${stackTag || '<span style="color:var(--text-muted)">1</span>'}</td>
         <td><span class="signal-tags">${sigTags}</span></td>
-        <td>${l.site_address || '<em style="color:var(--text-muted)">no site address</em>'}<br/>
+        <td>${ptBadge}${l.site_address || '<em style="color:var(--text-muted)">no site address</em>'}<br/>
             <span style="color:var(--text-muted);font-size:10px">${l.site_city||""} ${l.site_zip||""}</span></td>
         <td>${(l.owner||"—").slice(0,28)}</td>
         <td>${fmtM(l.equity_est)}</td>
