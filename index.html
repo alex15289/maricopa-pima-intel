@@ -66,6 +66,56 @@
     100% { box-shadow:0 0 0 0 rgba(34,197,94,0); }
   }
 
+  /* ---------- County tab bar ---------- */
+  .county-tabs {
+    display:flex; gap:0; padding:0 22px; border-bottom:1px solid var(--border);
+    background:var(--bg-panel);
+  }
+  .county-tab {
+    padding:12px 22px; cursor:pointer; user-select:none;
+    font-size:12px; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--text-muted); border-bottom:2px solid transparent;
+    font-family:"JetBrains Mono", monospace; font-weight:700;
+    display:flex; align-items:center; gap:8px;
+    transition: all .15s ease;
+  }
+  .county-tab:hover { color:var(--text); background:rgba(255,255,255,.02); }
+  .county-tab .tab-count { font-size:10px; color:var(--text-muted); font-weight:400; }
+  .county-tab.active { color:var(--accent); border-bottom-color:var(--accent); background:rgba(212,175,55,.04); }
+  .county-tab.active .tab-count { color:var(--accent); }
+  .county-tab[data-tab="Maricopa"].active { color:var(--maricopa); border-bottom-color:var(--maricopa); background:rgba(60,142,201,.06); }
+  .county-tab[data-tab="Maricopa"].active .tab-count { color:var(--maricopa); }
+  .county-tab[data-tab="Pima"].active { color:var(--pima); border-bottom-color:var(--pima); background:rgba(201,125,60,.06); }
+  .county-tab[data-tab="Pima"].active .tab-count { color:var(--pima); }
+
+  /* ---------- Tier pills (replace numeric score) ---------- */
+  .tier-pill {
+    display:inline-flex; align-items:center; gap:5px;
+    padding:4px 9px; border-radius:12px; font-size:10.5px; font-weight:700;
+    letter-spacing:0.1em; font-family:"JetBrains Mono",monospace;
+    border:1px solid; white-space:nowrap; cursor:help;
+  }
+  .tier-pill.hot    { background:rgba(239,68,68,.10);  border-color:rgba(239,68,68,.55);  color:#f87171; }
+  .tier-pill.strong { background:rgba(212,175,55,.12); border-color:rgba(212,175,55,.55); color:#d4af37; }
+  .tier-pill.likely { background:rgba(234,179,8,.08);  border-color:rgba(234,179,8,.45);  color:#eab308; }
+  .tier-pill.watch  { background:rgba(148,163,184,.08); border-color:rgba(148,163,184,.35); color:#94a3b8; }
+  .tier-pill.cold   { background:rgba(100,116,139,.05); border-color:rgba(100,116,139,.2); color:#64748b; }
+  .tier-raw { font-size:9px; color:var(--text-muted); margin-left:6px; font-family:"JetBrains Mono",monospace; }
+
+  /* Tooltip for "Why HOT?" */
+  .tier-tooltip {
+    position:absolute; z-index:9999; max-width:260px;
+    background:#0a101c; border:1px solid var(--accent-dim); border-radius:6px;
+    padding:10px 12px; font-size:11px; line-height:1.5;
+    box-shadow:0 8px 28px rgba(0,0,0,.6);
+    pointer-events:none; opacity:0; transition:opacity .15s;
+  }
+  .tier-tooltip.visible { opacity:1; }
+  .tier-tooltip h4 { font-size:10.5px; margin:0 0 6px; color:var(--accent); letter-spacing:0.08em; text-transform:uppercase; }
+  .tier-tooltip ul { margin:0; padding:0; list-style:none; }
+  .tier-tooltip li { padding:2px 0; color:var(--text); }
+  .tier-tooltip li::before { content:"✓"; color:#22c55e; margin-right:6px; font-weight:700; }
+
   /* ---------- Main layout ---------- */
   main { display:grid; grid-template-columns: 300px 1fr 380px; overflow:hidden; }
 
@@ -344,6 +394,13 @@
     </div>
   </header>
 
+  <!-- County Tab Bar -->
+  <div class="county-tabs">
+    <div class="county-tab active" data-tab="all">📊 All Counties <span class="tab-count" id="tab-count-all">—</span></div>
+    <div class="county-tab" data-tab="Maricopa">🏜️ Maricopa (Phoenix Metro) <span class="tab-count" id="tab-count-maricopa">—</span></div>
+    <div class="county-tab" data-tab="Pima">🌵 Pima (Tucson) <span class="tab-count" id="tab-count-pima">—</span></div>
+  </div>
+
   <!-- MAIN -->
   <main>
     <!-- Filters -->
@@ -351,14 +408,6 @@
       <div class="filter-group">
         <h3>Search</h3>
         <input type="search" id="f-search" placeholder="APN, owner, address…" />
-      </div>
-
-      <div class="filter-group">
-        <h3>County</h3>
-        <div class="chip-row" id="f-county">
-          <span class="chip county-maricopa active" data-val="Maricopa">Maricopa</span>
-          <span class="chip county-pima active"    data-val="Pima">Pima</span>
-        </div>
       </div>
 
       <div class="filter-group">
@@ -449,8 +498,8 @@
       </div>
 
       <div class="filter-group">
-        <h3>Min Score</h3>
-        <div class="slider-row"><span>0</span><span class="val" id="f-score-val">0</span><span>200</span></div>
+        <h3>Min Tier</h3>
+        <div class="slider-row"><span>Cold</span><span class="val" id="f-score-val">Any</span><span>🔥 Hot</span></div>
         <input type="range" id="f-score" min="0" max="200" value="0" step="5" />
       </div>
 
@@ -483,7 +532,7 @@
         <table id="tbl">
           <thead>
             <tr>
-              <th data-sort="score">Score <span class="sort-arrow">▼</span></th>
+              <th data-sort="score">Tier <span class="sort-arrow">▼</span></th>
               <th data-sort="county">Co.</th>
               <th data-sort="signal_count">Stack</th>
               <th data-sort="signals">Signals</th>
@@ -597,7 +646,7 @@ const state = {
   filtered: [],
   selectedId: null,
   filters: {
-    counties:     new Set(["Maricopa","Pima"]),
+    activeTab:    "all",  // "all" | "Maricopa" | "Pima"
     signals:      new Set(),
     flags:        new Set(),
     propertyTypes: new Set(),
@@ -637,6 +686,70 @@ const PROP_TYPES = {
   agricultural:     { label: "Agricultural",     icon: "🚜" },
   other:            { label: "Other",            icon: "❓" },
 };
+
+// Friendly labels for every flag — shown in the "Why HOT?" tooltip
+const FLAG_LABELS = {
+  // Legacy core flags
+  estate_owner:              "Estate / Heirs owner",
+  entity_owner:              "LLC / Corp owner",
+  family_trust:              "Family Trust owner",
+  absentee:                  "Absentee owner (lives elsewhere)",
+  out_of_state:              "Out-of-state owner",
+  long_hold:                 "Held 10+ years",
+  // Enrichment — distress
+  equity_gap_high:           "Huge equity gap vs. purchase",
+  negative_equity:           "Underwater (paid > current value)",
+  // Enrichment — life event
+  widow_indicator:           "Widow / surviving spouse",
+  multi_owner_inheritance:   "Heirs / multiple owners on deed",
+  care_of_address:           "Mail goes via C/O (attorney / trustee)",
+  corporate_dissolved:       "Dormant LLC / entity",
+  likely_vacant:             "Likely vacant (long hold + out-of-state)",
+  // Enrichment — holding pattern
+  tired_landlord:            "Tired landlord (absentee multifamily)",
+  accidental_landlord:       "Accidental landlord (recent absentee)",
+  mailing_to_pobox:          "Mails to a PO Box (avoids physical addr)",
+  out_of_country:            "Out-of-country owner",
+  // Enrichment — value
+  cash_flow_candidate:       "Cash-flow candidate (2-4 unit, older)",
+  teardown_candidate:        "Teardown (land worth > house)",
+  hurricane_equity:          "Massive equity + old build",
+  // Enrichment — portfolio
+  bulk_owner_3plus:          "Owns 3+ parcels",
+  bulk_owner_10plus:         "Owns 10+ parcels",
+  // Enrichment — velocity
+  never_sold:                "Never sold (generational / inherited)",
+  recent_underprice_sale:    "Recent below-market sale (distressed)",
+};
+
+// Score tier system — maps raw scores to plain-English labels
+function scoreTier(score) {
+  const s = score || 0;
+  if (s >= 200) return { key: "hot",    emoji: "🔥", label: "HOT",    desc: "Call today" };
+  if (s >= 120) return { key: "strong", emoji: "💎", label: "STRONG", desc: "Call this week" };
+  if (s >= 80)  return { key: "likely", emoji: "⚡", label: "LIKELY", desc: "Work into drip" };
+  if (s >= 40)  return { key: "watch",  emoji: "👀", label: "WATCH",  desc: "Keep in database" };
+  return             { key: "cold",   emoji: "",   label: "COLD",   desc: "Probably not motivated" };
+}
+
+// Collect all firing flags on a lead as friendly-labeled list
+function leadFlagReasons(lead) {
+  const out = [];
+  const lf = lead.legacy_flags || {};
+  const ef = lead.enrichment_flags || {};
+  for (const [k, v] of Object.entries(lf)) {
+    if (v && FLAG_LABELS[k]) out.push(FLAG_LABELS[k]);
+  }
+  for (const [k, v] of Object.entries(ef)) {
+    if (v && FLAG_LABELS[k]) out.push(FLAG_LABELS[k]);
+  }
+  // equity bonus is implicit — surface it if significant
+  if ((lead.equity_est || 0) >= 500000) out.push("Mega equity ($500k+)");
+  else if ((lead.equity_est || 0) >= 300000) out.push("High equity ($300k+)");
+  // Signal stacking
+  if ((lead.signal_count || 0) >= 2) out.push(`${lead.signal_count} stacked signals`);
+  return out;
+}
 
 /* ============================================================
    Data loading
@@ -693,12 +806,12 @@ function buildSignalChips() {
 /* ============================================================
    Filter bindings
    ============================================================ */
-$$("#f-county .chip").forEach(el => {
+// County tab bar — filters all downstream state
+$$(".county-tab").forEach(el => {
   el.addEventListener("click", () => {
-    el.classList.toggle("active");
-    const v = el.dataset.val;
-    if (state.filters.counties.has(v)) state.filters.counties.delete(v);
-    else state.filters.counties.add(v);
+    $$(".county-tab").forEach(x => x.classList.remove("active"));
+    el.classList.add("active");
+    state.filters.activeTab = el.dataset.tab;
     applyFilters();
   });
 });
@@ -733,7 +846,8 @@ bindChipGroup("#f-portfolio", "portfolio");
 bindChipGroup("#f-velocity",  "velocity");
 $("#f-score").addEventListener("input", e => {
   state.filters.minScore = +e.target.value;
-  $("#f-score-val").textContent = state.filters.minScore;
+  const tier = scoreTier(state.filters.minScore);
+  $("#f-score-val").textContent = state.filters.minScore === 0 ? "Any" : `${tier.emoji} ${tier.label}+`;
   applyFilters();
 });
 $("#f-equity").addEventListener("input", e => {
@@ -751,7 +865,7 @@ $("#f-search").addEventListener("input", e => {
    ============================================================ */
 function matches(lead) {
   const f = state.filters;
-  if (!f.counties.has(lead.county)) return false;
+  if (f.activeTab !== "all" && lead.county !== f.activeTab) return false;
 
   // Helper: check if a flag fired in either legacy_flags or enrichment_flags
   const lf = lead.legacy_flags || {};
@@ -854,12 +968,11 @@ function renderTable() {
     const pct = Math.min(100, Math.round((l.score||0)/200*100));
     const pt  = PROP_TYPES[l.property_type] || {};
     const ptBadge = pt.icon ? `<span title="${pt.label||''}" style="margin-right:4px">${pt.icon}</span>` : "";
+    const tier = scoreTier(l.score);
+    const tierPill = `<span class="tier-pill ${tier.key}" data-lead-id="${l._id}">${tier.emoji} ${tier.label}</span><span class="tier-raw">${l.score||0}</span>`;
     return `
       <tr data-id="${l._id}" ${state.selectedId === l._id ? 'class="selected"' : ''}>
-        <td>
-          <span class="score-bar"><span style="width:${pct}%"></span></span>
-          <strong>${l.score||0}</strong>
-        </td>
+        <td>${tierPill}</td>
         <td><span class="county-pill ${l.county}">${l.county?.[0]||"?"}</span></td>
         <td>${stackTag || '<span style="color:var(--text-muted)">1</span>'}</td>
         <td><span class="signal-tags">${sigTags}</span></td>
@@ -879,6 +992,54 @@ function renderTable() {
       renderDetail();
     });
   });
+
+  // Tier pill hover tooltip
+  $$(".tier-pill").forEach(pill => {
+    pill.addEventListener("mouseenter", e => showTierTooltip(e, +pill.dataset.leadId));
+    pill.addEventListener("mousemove",  e => moveTierTooltip(e));
+    pill.addEventListener("mouseleave", hideTierTooltip);
+  });
+}
+
+// Tier tooltip singleton
+let _tipEl = null;
+function ensureTip() {
+  if (!_tipEl) {
+    _tipEl = document.createElement("div");
+    _tipEl.className = "tier-tooltip";
+    document.body.appendChild(_tipEl);
+  }
+  return _tipEl;
+}
+function showTierTooltip(e, leadId) {
+  const l = state.leads.find(x => x._id === leadId);
+  if (!l) return;
+  const tier = scoreTier(l.score);
+  const reasons = leadFlagReasons(l);
+  const tip = ensureTip();
+  tip.innerHTML = `
+    <h4>Why ${tier.emoji} ${tier.label}?</h4>
+    ${reasons.length
+      ? `<ul>${reasons.map(r => `<li>${r}</li>`).join("")}</ul>`
+      : `<div style="color:var(--text-muted)">Score ${l.score} — minimal motivation signals.</div>`}
+    <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,.08); font-size:10px; color:var(--text-muted)">
+      ${tier.desc} · raw score ${l.score}
+    </div>`;
+  moveTierTooltip(e);
+  tip.classList.add("visible");
+}
+function moveTierTooltip(e) {
+  const tip = ensureTip();
+  const pad = 14;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  const rect = tip.getBoundingClientRect();
+  if (x + rect.width  > window.innerWidth)  x = e.clientX - rect.width  - pad;
+  if (y + rect.height > window.innerHeight) y = e.clientY - rect.height - pad;
+  tip.style.left = x + "px";
+  tip.style.top  = y + "px";
+}
+function hideTierTooltip() {
+  if (_tipEl) _tipEl.classList.remove("visible");
 }
 
 /* ============================================================
@@ -890,6 +1051,11 @@ function renderKPIs() {
   $("#kpi-mar").textContent   = f.filter(x => x.county === "Maricopa").length.toLocaleString();
   $("#kpi-pima").textContent  = f.filter(x => x.county === "Pima").length.toLocaleString();
   $("#kpi-stacked").textContent = f.filter(x => (x.signal_count||0) >= 2).length.toLocaleString();
+
+  // Update county tab badge counts (based on unfiltered leads so tabs always show total per county)
+  $("#tab-count-all").textContent      = state.leads.length.toLocaleString();
+  $("#tab-count-maricopa").textContent = state.leads.filter(x => x.county === "Maricopa").length.toLocaleString();
+  $("#tab-count-pima").textContent     = state.leads.filter(x => x.county === "Pima").length.toLocaleString();
 }
 
 /* ============================================================
