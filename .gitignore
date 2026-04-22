@@ -21,13 +21,18 @@ Thumbs.db
 *.key
 
 # Scraper artifacts — bulky and regenerable
-# Keep leads.json since the dashboard reads it; exclude the raw intermediates.
 data/*.jsonl
 data/*.csv
+data/*.bak
+data/pima_assessor/
+data/pima_tax_delinquent.xlsx
 data/_debug/
 !data/leads.json
+
+# Logs
+*.log
 
 # Playwright
 test-results/
 playwright-report/
-
+.playwright-pima/

@@ -171,7 +171,9 @@ def is_trust_owner(owner: Optional[str]) -> bool:
 def is_long_hold(parcel: dict, now: datetime) -> bool:
     dt = parse_record_date(parcel.get("last_sale_date"))
     if not dt: return False
-    return (now - dt).days / 365.25 >= 10
+    # Strip timezone from now for comparison (last_sale_date is naive)
+    now_naive = now.replace(tzinfo=None) if now.tzinfo else now
+    return (now_naive - dt).days / 365.25 >= 10
 
 
 def equity_estimate(parcel: dict) -> float:
@@ -415,15 +417,28 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
         # Score components
         signal_score = 0
         signal_entries = []
+        max_imminence = 0   # track foreclosure risk from tax-delinquent signals
         for sig in parcel_signals:
             stype = sig.get("signal_type", "")
             w = SIGNAL_WEIGHTS.get(stype, 5)
             signal_score += w
+            # Pima tax-delinquent signals carry foreclosure_imminence (1-5)
+            imminence = sig.get("foreclosure_imminence", 0) or 0
+            if imminence > max_imminence:
+                max_imminence = imminence
+            # Bonus weight for deep delinquency (3+ years = tax auction threshold)
+            if imminence >= 4:
+                signal_score += 15
+            elif imminence >= 3:
+                signal_score += 8
             signal_entries.append({
                 "type": stype,
                 "date": sig.get("record_date") or sig.get("filed_date"),
                 "doc_number": sig.get("doc_number") or sig.get("case_number"),
                 "amount": sig.get("amount"),
+                "years_delinquent": sig.get("years_delinquent"),
+                "foreclosure_imminence": imminence or None,
+                "doc_url": sig.get("doc_url"),
             })
         # Stacking bonus
         if len(parcel_signals) > 1:
@@ -440,6 +455,22 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
         enrichment_score = enrichment["enrichment_score"]
         equity = equity_estimate(p)
         eq_bonus = equity_bonus(equity)
+
+        # ── Synthetic "likely_foreclosure" flag ───────────────────────────
+        # Fires when: NOTS/Sheriffs Deed present, OR tax imminence >= 3
+        # (tax auction threshold), OR bankruptcy + absentee
+        likely_foreclosure = False
+        has_nots = any(s.get("type") == "Notice of Trustee Sale" for s in signal_entries)
+        has_sheriff = any(s.get("type") == "Sheriffs Deed" for s in signal_entries)
+        has_bk = any(s.get("type") == "Bankruptcy" for s in signal_entries)
+        if has_nots or has_sheriff:
+            likely_foreclosure = True
+        elif max_imminence >= 3:
+            likely_foreclosure = True
+        elif has_bk and legacy_flags.get("absentee"):
+            likely_foreclosure = True
+        if likely_foreclosure:
+            legacy_flags["likely_foreclosure"] = True
 
         # ── Combo bonuses — the wholesaler playbook ───────────────────────
         combo_score = 0
@@ -458,6 +489,31 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
         if has_probate_signal and equity >= 300_000:
             combo_score += COMBO_BONUS_PROBATE_HIGH_EQUITY
             combos_hit.append("probate_high_equity")
+
+        # ── Additional combos (Oct 2026 tuning) ───────────────────────────
+        has_any_tax = any(s.get("type") in ("Tax Delinquent", "State Tax Lien",
+                                             "Federal Tax Lien") for s in signal_entries)
+        has_any_lien = any("Lien" in (s.get("type") or "") for s in signal_entries)
+        # Tax + Time: tax-delinquent + 15+ yr hold = long-ignored equity
+        if has_any_tax and (p.get("hold_years") or 0) >= 15:
+            combo_score += 20
+            combos_hit.append("tax_delinquent_long_hold")
+        # Distant Heir: estate-owner + out-of-state
+        if legacy_flags.get("estate_owner") and legacy_flags.get("out_of_state"):
+            combo_score += 25
+            combos_hit.append("distant_heir")
+        # LLC Dissolution + Lien: dissolved LLC still owns + any lien = abandoned
+        if enrichment["enrichment_flags"].get("corporate_dissolved") and has_any_lien:
+            combo_score += 20
+            combos_hit.append("dissolved_llc_with_lien")
+        # Serial Absentee: absentee + 3+ other properties
+        if legacy_flags.get("absentee") and enrichment["enrichment_flags"].get("bulk_owner_3plus"):
+            combo_score += 18
+            combos_hit.append("serial_absentee")
+        # Deep distress: tax imminence >= 4 + absentee
+        if max_imminence >= 4 and legacy_flags.get("absentee"):
+            combo_score += 30
+            combos_hit.append("deep_distress_absentee")
 
         total_score = signal_score + legacy_score + enrichment_score + eq_bonus + combo_score
 
@@ -550,9 +606,32 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
     else:
         log.info("no previous leads.json — all leads are considered seen today")
 
+    # ── Daily rotation seed — "New Opportunities" pool ───────────────────
+    # Surface a fresh ~250 leads each day by seeding the shuffle with today's
+    # date. Top 2,000 high-scoring leads act as the pool we rotate through.
+    import random as _random
+    import datetime as _dt
+    seed = int(_dt.date.today().strftime("%Y%m%d"))
+    _rng = _random.Random(seed)
+    pool = leads[:2000]
+    rotation_indexes = list(range(len(pool)))
+    _rng.shuffle(rotation_indexes)
+    daily_rotation_keys = set()
+    for idx in rotation_indexes[:250]:
+        l = pool[idx]
+        daily_rotation_keys.add(f"{l['county']}:{l['apn_norm'] or l['apn']}")
+    # Tag the leads that are in today's rotation
+    for l in leads:
+        k = f"{l['county']}:{l['apn_norm'] or l['apn']}"
+        if k in daily_rotation_keys:
+            l["daily_opportunity"] = True
+    log.info(f"daily rotation: {len(daily_rotation_keys)} leads tagged (seed={seed})")
+
     out = {
         "generated_at": now_iso,
         "previous_generated_at": prev_generated,
+        "daily_rotation_date": _dt.date.today().isoformat(),
+        "daily_rotation_size": len(daily_rotation_keys),
         "counties":     ["Maricopa", "Pima"],
         "total_leads":  len(leads),
         "new_since_last_build": new_count_24h,

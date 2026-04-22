@@ -94,7 +94,9 @@ def _years_ago(date_str: Optional[str], now: datetime) -> Optional[float]:
             dt = datetime.strptime(s[:10], "%m/%d/%Y")
         else:
             return None
-        return (now - dt).days / 365.25
+        # Strip tz if now is aware — dt is always naive above
+        now_naive = now.replace(tzinfo=None) if now.tzinfo else now
+        return (now_naive - dt).days / 365.25
     except Exception:
         return None
 

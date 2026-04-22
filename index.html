@@ -343,6 +343,29 @@
     color:var(--accent) !important; display:block !important; line-height:1.2 !important;
   }
   .ql-tile.new-leads .ql-icon { animation: newpulse 1.8s ease-in-out infinite; }
+
+  /* Dimmed state for tiles with 0 matching leads */
+  .ql-tile.empty {
+    opacity:0.35; cursor:not-allowed; pointer-events:none;
+    filter:grayscale(0.8);
+  }
+  .ql-tile.empty .ql-count { color:var(--text-muted) !important; }
+
+  /* Signal Stack Depth dropdown */
+  .stack-select {
+    width:100%; padding:8px 12px; background:var(--bg-elev); color:var(--text);
+    border:1px solid var(--border); border-radius:4px;
+    font-family:"JetBrains Mono",monospace; font-size:11.5px; letter-spacing:0.02em;
+    cursor:pointer;
+    -webkit-appearance:none; -moz-appearance:none; appearance:none;
+    background-image:linear-gradient(45deg, transparent 50%, var(--accent) 50%),
+                     linear-gradient(135deg, var(--accent) 50%, transparent 50%);
+    background-position:calc(100% - 14px) 50%, calc(100% - 8px) 50%;
+    background-size:6px 6px, 6px 6px;
+    background-repeat:no-repeat;
+  }
+  .stack-select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+  .stack-select option { background:var(--bg-panel); color:var(--text); }
   @keyframes newpulse { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
 
   /* NEW badge on leads */
@@ -609,7 +632,7 @@
     <div class="kpis">
       <div class="kpi"><div class="val" id="kpi-totalall">—</div><div class="lbl">Total Pool</div></div>
       <div class="kpi"><div class="val" id="kpi-total">—</div><div class="lbl">In View</div></div>
-      <div class="kpi"><div class="val" id="kpi-new">—</div><div class="lbl">🆕 New</div></div>
+      <div class="kpi"><div class="val" id="kpi-new">—</div><div class="lbl">🎯 Opps</div></div>
       <div class="kpi"><div class="val" id="kpi-stacked">—</div><div class="lbl">Stacked 2+</div></div>
       <div class="kpi"><div class="val" id="kpi-updated">—</div><div class="lbl">Updated</div></div>
       <div class="kpi live-kpi"><span class="live-dot"></span><span class="live-text">LIVE</span></div>
@@ -624,9 +647,9 @@
       <span class="ql-label">All Leads</span>
     </div>
     <div class="ql-tile new-leads" data-ql="new">
-      <span class="ql-icon">🆕</span>
+      <span class="ql-icon">🎯</span>
       <span class="ql-count" id="ql-count-new">—</span>
-      <span class="ql-label">New Today</span>
+      <span class="ql-label">New Opportunities</span>
     </div>
     <div class="ql-tile" data-ql="preforeclosure">
       <span class="ql-icon">🔥</span>
@@ -706,14 +729,25 @@
       </div>
 
       <div class="filter-group">
+        <h3>Signal Stack Depth</h3>
+        <select id="f-stack-depth" class="stack-select">
+          <option value="0">Any (no minimum)</option>
+          <option value="2">2+ stacked signals</option>
+          <option value="3">3+ stacked signals</option>
+          <option value="4">4+ stacked signals</option>
+          <option value="5">5+ stacked signals</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
         <h3>Core Flags</h3>
         <div class="chip-row" id="f-flags">
           <span class="chip" data-val="absentee">Absentee</span>
           <span class="chip" data-val="out_of_state">Out of State</span>
-          <span class="chip" data-val="stacked">Stacked 2+</span>
           <span class="chip" data-val="estate_owner">Estate / Heirs</span>
           <span class="chip" data-val="family_trust">Family Trust</span>
           <span class="chip" data-val="likely_vacant">Likely Vacant</span>
+          <span class="chip" data-val="likely_foreclosure">Likely Foreclosure</span>
           <span class="chip" data-val="long_hold">10+ yr hold</span>
           <span class="chip" data-val="hide_cash_buyer">Hide LLC / Inc</span>
         </div>
@@ -928,8 +962,9 @@ const state = {
   prevGeneratedAt: null,    // previous build timestamp (for NEW detection)
   filters: {
     activeTab:    "all",  // "all" | "Maricopa" | "Pima"
-    quickList:    "all",  // "all" | "new" | "preforeclosure" | "estate" | "taxlien" | "absentee_equity" | "high_equity" | "stacked"
+    quickList:    "all",  // "all" | "new" | "preforeclosure" | ...
     intent:       new Set(),   // "foreclosure_risk" | "lawsuit_risk" | "lien_pressure"
+    stackDepth:   0,     // 0 = any; 2/3/4/5 = min signal count
     signals:      new Set(),
     flags:        new Set(),
     propertyTypes: new Set(),
@@ -1236,6 +1271,14 @@ bindChipGroup("#f-holding",   "holding");
 bindChipGroup("#f-value",     "valuePlay");
 bindChipGroup("#f-portfolio", "portfolio");
 bindChipGroup("#f-velocity",  "velocity");
+// Signal stack depth dropdown
+const stackSel = document.getElementById("f-stack-depth");
+if (stackSel) {
+  stackSel.addEventListener("change", e => {
+    state.filters.stackDepth = +e.target.value || 0;
+    applyFilters();
+  });
+}
 $("#f-score").addEventListener("input", e => {
   state.filters.minScore = +e.target.value;
   const tier = scoreTier(state.filters.minScore);
@@ -1273,7 +1316,9 @@ function matches(lead) {
         if (!isNewLead(lead)) return false;
         break;
       case "preforeclosure":
-        if (!hasSignal("Notice of Trustee Sale") && !hasSignal("Sheriffs Deed")) return false;
+        if (!lf.likely_foreclosure
+            && !hasSignal("Notice of Trustee Sale")
+            && !hasSignal("Sheriffs Deed")) return false;
         break;
       case "estate":
         if (!hasSignal("Affidavit of Death") && !hasSignal("Probate Case")
@@ -1350,12 +1395,15 @@ function matches(lead) {
   // Core flags (backward compat + hide toggles)
   if (f.flags.has("absentee")      && !lf.absentee)      return false;
   if (f.flags.has("out_of_state")  && !lf.out_of_state)  return false;
-  if (f.flags.has("stacked")       && (lead.signal_count||0) < 2) return false;
   if (f.flags.has("estate_owner")  && !lf.estate_owner)  return false;
   if (f.flags.has("family_trust")  && !lf.family_trust)  return false;
   if (f.flags.has("likely_vacant") && !ef.likely_vacant && !lf.likely_vacant) return false;
+  if (f.flags.has("likely_foreclosure") && !lf.likely_foreclosure) return false;
   if (f.flags.has("long_hold")     && !lf.long_hold)     return false;
   if (f.flags.has("hide_cash_buyer") && lf.entity_owner) return false;
+
+  // Signal stack depth (dropdown) — minimum number of signals stacked
+  if (f.stackDepth > 0 && (lead.signal_count || 0) < f.stackDepth) return false;
 
   // All category chip groups — require ALL selected chips in each group to fire
   const checkGroup = (group) => {
@@ -1392,23 +1440,15 @@ function applyFilters() {
 }
 
 /* ============================================================
-   NEW lead detection — fires when lead.first_seen_at is within
-   the last 48h OR after the previous build timestamp
+   Opportunity detection — fires when backend flagged this lead
+   in today's daily rotation (deterministic daily shuffle of
+   top-scoring leads). Same set all day, different tomorrow.
    ============================================================ */
-function isNewLead(lead) {
-  const fs = lead.first_seen_at;
-  if (!fs) return false;
-  // If we have a previous-build timestamp, "new" = first_seen after prev build
-  if (state.prevGeneratedAt) {
-    return fs > state.prevGeneratedAt;
-  }
-  // Fallback: within last 48h of current build
-  const cur = state.generatedAt;
-  if (!cur) return false;
-  const curMs = Date.parse(cur);
-  const fsMs  = Date.parse(fs);
-  return (curMs - fsMs) <= 48 * 3600 * 1000;
+function isOpportunity(lead) {
+  return !!lead.daily_opportunity;
 }
+// Legacy alias (keep old name working for any downstream references)
+function isNewLead(lead) { return isOpportunity(lead); }
 
 /* ============================================================
    Quick Lists — the Propstream-style preset tiles at top
@@ -1424,7 +1464,8 @@ function computeQuickListCounts() {
     const lf = lead.legacy_flags || {};
     const ef = lead.enrichment_flags || {};
 
-    if (sigs.has("Notice of Trustee Sale") || sigs.has("Sheriffs Deed"))
+    if (lf.likely_foreclosure
+        || sigs.has("Notice of Trustee Sale") || sigs.has("Sheriffs Deed"))
       counts.preforeclosure++;
     if (sigs.has("Affidavit of Death") || sigs.has("Probate Case")
         || lf.estate_owner || ef.multi_owner_inheritance || ef.widow_indicator)
@@ -1438,12 +1479,20 @@ function computeQuickListCounts() {
     if ((lead.signal_count||0) >= 2 || (lead.combos||[]).length > 0)
       counts.stacked++;
   }
-  // Write counts back to the UI
+  // Write counts back to the UI + dim zero-count tiles
   for (const k of Object.keys(counts)) {
     const el = document.getElementById(`ql-count-${k}`);
     if (el) el.textContent = counts[k].toLocaleString();
+    const tile = document.querySelector(`.ql-tile[data-ql="${k}"]`);
+    if (tile) {
+      if (counts[k] === 0 && k !== "all") {
+        tile.classList.add("empty");
+      } else {
+        tile.classList.remove("empty");
+      }
+    }
   }
-  // Update the header "New" KPI
+  // Update the header "Opps" KPI
   const newKpi = document.getElementById("kpi-new");
   if (newKpi) newKpi.textContent = counts.new.toLocaleString();
 }

@@ -1,0 +1,78 @@
+name: Monthly Refresh — All Signals
+
+# Runs on the 1st of every month at 9:00 UTC (3am CST / 2am CDT).
+# Also runs on-demand via "Run workflow" button in GitHub Actions tab.
+#
+# What it does, in order:
+#   1. Scrape Maricopa Recorder (last 45 days of distress filings)
+#   2. Match recorder names → parcel APNs (strict, trustee-filtered)
+#   3. Enrich Pima tax-delinquent signals (requires data/pima_tax_delinquent.xlsx)
+#   4. Rebuild leads.json with all signals + daily rotation
+#   5. Commit and push
+on:
+  schedule:
+    - cron: "0 9 1 * *"    # 1st of month, 9am UTC
+  workflow_dispatch:        # manual trigger button
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Scrape Maricopa Recorder (last 45 days)
+        run: PYTHONPATH=. python scrapers/maricopa_recorder_api.py --days 45
+
+      - name: Match Maricopa recorder names → APNs
+        run: PYTHONPATH=. python pipeline/match_recorder.py
+
+      - name: Enrich Pima tax-delinquent (if xlsx present)
+        run: |
+          if [ -f data/pima_tax_delinquent.xlsx ]; then
+            PYTHONPATH=. python pipeline/enrich_pima_tax_delinquent.py
+          else
+            echo "⚠ data/pima_tax_delinquent.xlsx not found — skipping Pima tax enrichment"
+          fi
+
+      - name: Rebuild leads.json
+        run: PYTHONPATH=. python pipeline/build_leads.py
+
+      - name: Commit results
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/leads.json \
+                  data/maricopa_recorder_raw.jsonl \
+                  data/maricopa_recorder_unresolved.jsonl \
+                  data/tax_delinquent_pima.jsonl 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Monthly refresh: $(date -u +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: Upload debug artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-${{ github.run_id }}
+          path: data/_debug/
+          retention-days: 14
