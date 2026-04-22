@@ -351,6 +351,34 @@
   }
   .ql-tile.empty .ql-count { color:var(--text-muted) !important; }
 
+  /* Filter chip count badges + empty-chip dimming */
+  .chip-count {
+    display:inline-block; margin-left:5px; padding:0 6px;
+    background:var(--bg-panel); color:var(--accent);
+    border-radius:9px; font-size:9.5px; font-weight:700;
+    font-family:"JetBrains Mono",monospace; letter-spacing:0.02em;
+    vertical-align:middle; min-width:16px; text-align:center;
+  }
+  .chip-empty {
+    opacity:0.35 !important; cursor:not-allowed !important;
+    pointer-events:none; filter:grayscale(0.8);
+  }
+  .chip-empty .chip-count { color:var(--text-muted) !important; }
+
+  /* Distress pattern badges — color-coded per pattern type */
+  .pattern-badges { display:flex; flex-wrap:wrap; gap:3px; }
+  .pattern-badge {
+    display:inline-block; padding:2px 7px; border-radius:10px;
+    font-size:9.5px; font-weight:700; letter-spacing:0.02em;
+    text-transform:uppercase; white-space:nowrap;
+  }
+  .pattern-badge.pat-foreclosure { background:#5d1a1a; color:#ff8b7b; border:1px solid #ff5f4b33; }
+  .pattern-badge.pat-tax         { background:#5c4017; color:#fbbf4a; border:1px solid #fbbf4a33; }
+  .pattern-badge.pat-estate      { background:#3a2b5c; color:#c5a3ff; border:1px solid #c5a3ff33; }
+  .pattern-badge.pat-legal       { background:#1e3a5c; color:#7fb2ff; border:1px solid #7fb2ff33; }
+  .pattern-badge.pat-vacancy     { background:#333333; color:#cccccc; border:1px solid #ffffff33; }
+  .pattern-badge.pat-landlord    { background:#1c4a39; color:#6fd9a9; border:1px solid #6fd9a933; }
+
   /* Signal Stack Depth dropdown */
   .stack-select {
     width:100%; padding:8px 12px; background:var(--bg-elev); color:var(--text);
@@ -844,7 +872,7 @@
               <th data-sort="score">Tier <span class="sort-arrow">▼</span></th>
               <th data-sort="county">Co.</th>
               <th data-sort="signal_count">Stack</th>
-              <th data-sort="signals">Signals</th>
+              <th data-sort="signals">Distress Patterns</th>
               <th data-sort="site_address">Property</th>
               <th data-sort="owner">Owner</th>
               <th data-sort="equity_est">Equity</th>
@@ -1005,6 +1033,16 @@ const PROP_TYPES = {
   other:            { label: "Other",            icon: "❓" },
 };
 
+// Distress pattern metadata — one per pattern, each gets a colored badge
+const PATTERN_META = {
+  "Foreclosure":    { emoji: "🔥", cls: "pat-foreclosure" },
+  "Tax Pressure":   { emoji: "💰", cls: "pat-tax" },
+  "Estate":         { emoji: "👑", cls: "pat-estate" },
+  "Legal":          { emoji: "⚖️", cls: "pat-legal" },
+  "Vacancy":        { emoji: "🏚️", cls: "pat-vacancy" },
+  "Tired Landlord": { emoji: "🏢", cls: "pat-landlord" },
+};
+
 // Friendly labels for every flag — shown in the "Why HOT?" tooltip
 const FLAG_LABELS = {
   // Legacy core flags
@@ -1041,13 +1079,28 @@ const FLAG_LABELS = {
 };
 
 // Score tier system — maps raw scores to plain-English labels
-function scoreTier(score) {
-  const s = score || 0;
-  if (s >= 200) return { key: "hot",    emoji: "🔥", label: "HOT",    desc: "Call today" };
-  if (s >= 120) return { key: "strong", emoji: "💎", label: "STRONG", desc: "Call this week" };
-  if (s >= 80)  return { key: "likely", emoji: "⚡", label: "LIKELY", desc: "Work into drip" };
-  if (s >= 40)  return { key: "watch",  emoji: "👀", label: "WATCH",  desc: "Keep in database" };
-  return             { key: "cold",   emoji: "",   label: "COLD",   desc: "Probably not motivated" };
+function scoreTier(score, equity, signalCount, combos, leadObj) {
+  // Prefer backend-assigned tier (based on distress pattern stacking).
+  // Falls back to stack count for legacy rendering calls.
+  const l = leadObj || {};
+  const stacks = l.stack_count != null ? l.stack_count : (signalCount || 0);
+  const backendTier = l.tier;
+  if (backendTier) {
+    const map = {
+      hot:    { key: "hot",    emoji: "🔥", label: "HOT",    desc: `${stacks}-stack distress — call today` },
+      strong: { key: "strong", emoji: "💎", label: "STRONG", desc: `${stacks}-stack — call this week` },
+      likely: { key: "likely", emoji: "⚡", label: "LIKELY", desc: `${stacks}-stack — add to drip` },
+      watch:  { key: "watch",  emoji: "👀", label: "WATCH",  desc: "Single signal — keep in database" },
+      cold:   { key: "cold",   emoji: "",   label: "COLD",   desc: "No distress patterns" },
+    };
+    return map[backendTier] || map.cold;
+  }
+  // Fallback (pre-v3 leads.json without pattern data)
+  if (stacks >= 4) return { key: "hot",    emoji: "🔥", label: "HOT",    desc: "4+ stacked patterns" };
+  if (stacks === 3) return { key: "strong", emoji: "💎", label: "STRONG", desc: "3 stacked patterns" };
+  if (stacks === 2) return { key: "likely", emoji: "⚡", label: "LIKELY", desc: "2 patterns" };
+  if (stacks === 1) return { key: "watch",  emoji: "👀", label: "WATCH",  desc: "Single signal" };
+  return { key: "cold", emoji: "", label: "COLD", desc: "No patterns" };
 }
 
 // Collect all firing flags on a lead as friendly-labeled list
@@ -1186,6 +1239,7 @@ async function loadData() {
     $("#kpi-updated").textContent = (payload.generated_at || "").slice(0,10) || "—";
     $("#kpi-totalall").textContent = state.totalPool.toLocaleString();
     buildSignalChips();
+    decorateFilterCounts();
     computeQuickListCounts();
     initQuickLists();
     initGlobalSearch();
@@ -1210,15 +1264,24 @@ async function loadData() {
    Filter chips: signals are discovered from the data
    ============================================================ */
 function buildSignalChips() {
-  const types = new Set();
-  for (const l of state.leads) for (const s of (l.signals||[])) if (s.type) types.add(s.type);
+  // Count occurrences of each signal type
+  const typeCounts = new Map();
+  for (const l of state.leads) {
+    const seen = new Set();
+    for (const s of (l.signals||[])) {
+      if (s.type && !seen.has(s.type)) {
+        typeCounts.set(s.type, (typeCounts.get(s.type) || 0) + 1);
+        seen.add(s.type);
+      }
+    }
+  }
   const row = $("#f-signals");
   row.innerHTML = "";
-  [...types].sort().forEach(t => {
+  [...typeCounts.entries()].sort((a,b) => b[1] - a[1]).forEach(([t, n]) => {
     const el = document.createElement("span");
     el.className = "chip";
     el.dataset.val = t;
-    el.textContent = t;
+    el.innerHTML = `${t} <span class="chip-count">${n.toLocaleString()}</span>`;
     el.addEventListener("click", () => {
       el.classList.toggle("active");
       if (state.filters.signals.has(t)) state.filters.signals.delete(t);
@@ -1226,6 +1289,97 @@ function buildSignalChips() {
       applyFilters();
     });
     row.appendChild(el);
+  });
+}
+
+/* ============================================================
+   Compute filter counts — every sidebar chip gets an inline badge
+   showing how many leads would fire that filter. Users can see
+   their option space at a glance instead of clicking into empty filters.
+   ============================================================ */
+function decorateFilterCounts() {
+  // Build a map: flag_name -> count of leads that have it
+  const counts = {
+    // property types
+    sfr:0, townhome_condo:0, mobile_home:0, multifamily_2_4:0, multifamily_5_20:0,
+    multifamily_20p:0, vacant_land:0, rural_acreage:0, commercial:0,
+    // deal intent — composite
+    foreclosure_risk:0, lawsuit_risk:0, lien_pressure:0,
+    // core flags (legacy)
+    absentee:0, out_of_state:0, estate_owner:0, family_trust:0,
+    likely_vacant:0, likely_foreclosure:0, long_hold:0, hide_cash_buyer:0,
+    // enrichment flags
+    equity_gap_high:0, negative_equity:0, widow_indicator:0,
+    multi_owner_inheritance:0, care_of_address:0, corporate_dissolved:0,
+    tired_landlord:0, accidental_landlord:0, mailing_to_pobox:0, out_of_country:0,
+    cash_flow_candidate:0, teardown_candidate:0, hurricane_equity:0,
+    bulk_owner_3plus:0, bulk_owner_10plus:0,
+    never_sold:0, recent_underprice_sale:0,
+  };
+
+  for (const l of state.leads) {
+    const lf = l.legacy_flags || {};
+    const ef = l.enrichment_flags || {};
+    const ptype = l.property_type || "";
+    const combos = l.combos || [];
+    const hasSig = type => (l.signals || []).some(s => s.type === type);
+
+    // Property types
+    if (ptype in counts) counts[ptype]++;
+
+    // Deal intent — composite
+    if (hasSig("Notice of Trustee Sale") || hasSig("Sheriffs Deed")
+        || hasSig("Tax Delinquent") || hasSig("Federal Tax Lien")
+        || hasSig("Bankruptcy") || ef.negative_equity
+        || combos.includes("tired_oos_landlord")) counts.foreclosure_risk++;
+    if (hasSig("Lis Pendens") || hasSig("Judgment Lien") || hasSig("Divorce")
+        || hasSig("Bankruptcy") || hasSig("Probate Case")) counts.lawsuit_risk++;
+    if (hasSig("Federal Tax Lien") || hasSig("State Tax Lien") || hasSig("City Lien")
+        || hasSig("Medicaid Lien") || hasSig("Hospital Lien") || hasSig("Mechanics Lien")
+        || hasSig("HOA Lien") || hasSig("Judgment Lien") || hasSig("Tax Delinquent"))
+      counts.lien_pressure++;
+
+    // Legacy flags
+    if (lf.absentee) counts.absentee++;
+    if (lf.out_of_state) counts.out_of_state++;
+    if (lf.estate_owner) counts.estate_owner++;
+    if (lf.family_trust) counts.family_trust++;
+    if (lf.likely_vacant || ef.likely_vacant) counts.likely_vacant++;
+    if (lf.likely_foreclosure) counts.likely_foreclosure++;
+    if (lf.long_hold) counts.long_hold++;
+    // "hide_cash_buyer" is a HIDE filter — it hides entity-owned leads. Count = entity leads.
+    if (lf.entity_owner) counts.hide_cash_buyer++;
+
+    // Enrichment flags
+    for (const key of ["equity_gap_high","negative_equity","widow_indicator",
+                       "multi_owner_inheritance","care_of_address","corporate_dissolved",
+                       "tired_landlord","accidental_landlord","mailing_to_pobox","out_of_country",
+                       "cash_flow_candidate","teardown_candidate","hurricane_equity",
+                       "bulk_owner_3plus","bulk_owner_10plus","never_sold","recent_underprice_sale"]) {
+      if (ef[key]) counts[key]++;
+    }
+  }
+
+  // Inject count badges into every matching chip in the sidebar
+  document.querySelectorAll(".chip[data-val]").forEach(chip => {
+    const val = chip.dataset.val;
+    if (!(val in counts)) return; // skip signal-type chips (they're built separately)
+    const n = counts[val];
+    // Strip any existing count badge
+    const existing = chip.querySelector(".chip-count");
+    if (existing) existing.remove();
+    // Append fresh badge
+    const badge = document.createElement("span");
+    badge.className = "chip-count";
+    badge.textContent = n.toLocaleString();
+    chip.appendChild(document.createTextNode(" "));
+    chip.appendChild(badge);
+    // Dim zero-count chips
+    if (n === 0) {
+      chip.classList.add("chip-empty");
+    } else {
+      chip.classList.remove("chip-empty");
+    }
   });
 }
 
@@ -1638,21 +1792,26 @@ function renderTable() {
   const max = 500; // virtualized cap
   const rows = state.filtered.slice(0, max);
   body.innerHTML = rows.map(l => {
-    const sigTags = (l.signals||[]).slice(0,3).map(s =>
-      `<span class="signal-tag">${s.type||""}</span>`).join("");
-    const stackTag = (l.signal_count||0) >= 2
-      ? `<span class="signal-tag stack">×${l.signal_count}</span>` : "";
-    const pct = Math.min(100, Math.round((l.score||0)/200*100));
+    // Pattern badges — the actual distress types this lead has
+    const patterns = l.patterns || [];
+    const patternBadges = patterns.map(p => {
+      const meta = PATTERN_META[p] || {emoji:"•", cls:"pat-generic"};
+      return `<span class="pattern-badge ${meta.cls}" title="${p}">${meta.emoji} ${p}</span>`;
+    }).join("");
+    const stackCount = l.stack_count || 0;
+    const stackTag = stackCount > 0
+      ? `<span class="signal-tag stack">×${stackCount}</span>`
+      : `<span style="color:var(--text-muted)">0</span>`;
     const pt  = PROP_TYPES[l.property_type] || {};
     const ptBadge = pt.icon ? `<span title="${pt.label||''}" style="margin-right:4px">${pt.icon}</span>` : "";
-    const tier = scoreTier(l.score);
-    const tierPill = `<span class="tier-pill ${tier.key}" data-lead-id="${l._id}">${tier.emoji} ${tier.label}</span><span class="tier-raw">${l.score||0}</span>`;
+    const tier = scoreTier(l.score, l.equity_est, l.signal_count, l.combos, l);
+    const tierPill = `<span class="tier-pill ${tier.key}" data-lead-id="${l._id}">${tier.emoji} ${tier.label}</span><span class="tier-raw">${stackCount}</span>`;
     return `
       <tr data-id="${l._id}" ${state.selectedId === l._id ? 'class="selected"' : ''}>
         <td>${tierPill}</td>
         <td><span class="county-pill ${l.county}">${l.county?.[0]||"?"}</span></td>
-        <td>${stackTag || '<span style="color:var(--text-muted)">1</span>'}</td>
-        <td><span class="signal-tags">${sigTags}</span></td>
+        <td>${stackTag}</td>
+        <td><div class="pattern-badges">${patternBadges}</div></td>
         <td>${ptBadge}${l.site_address || '<em style="color:var(--text-muted)">no site address</em>'}<br/>
             <span style="color:var(--text-muted);font-size:10px">${l.site_city||""} ${l.site_zip||""}</span></td>
         <td>${(l.owner||"—").slice(0,28)}${isNewLead(l) ? '<span class="new-badge">NEW</span>' : ''}</td>
@@ -1691,7 +1850,7 @@ function ensureTip() {
 function showTierTooltip(e, leadId) {
   const l = state.leads.find(x => x._id === leadId);
   if (!l) return;
-  const tier = scoreTier(l.score);
+  const tier = scoreTier(l.score, l.equity_est, l.signal_count, l.combos, l);
   const reasons = leadFlagReasons(l);
   const tip = ensureTip();
   tip.innerHTML = `
@@ -1761,9 +1920,21 @@ function renderDetail() {
       </div>
     ` : ""}
 
+    ${(l.patterns && l.patterns.length) ? `
+      <div class="section">
+        <h4>🎯 Distress Patterns (${l.stack_count || 0} stacked)</h4>
+        <div class="pattern-badges" style="margin-bottom:8px">
+          ${l.patterns.map(p => {
+            const meta = PATTERN_META[p] || {emoji:"•", cls:"pat-generic"};
+            return `<span class="pattern-badge ${meta.cls}">${meta.emoji} ${p}</span>`;
+          }).join("")}
+        </div>
+      </div>
+    ` : ""}
+
     ${combosHit.length ? `
       <div class="section">
-        <h4>Stacked Patterns</h4>
+        <h4>Combo Signals</h4>
         ${combosHit.map(c => `<span class="combo-badge">${c.replace(/_/g,' ')}</span>`).join("")}
       </div>
     ` : ""}

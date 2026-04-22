@@ -49,63 +49,60 @@ log = logging.getLogger("pipeline")
 # Scoring weights
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
-# Scoring weights  (v2 — wholesaler-tuned, Oct 2026)
+# Scoring weights  (v3 — rebalanced Apr 22 2026)
 # -----------------------------------------------------------------------------
-# Philosophy: weights reflect *close-rate* in wholesaler terms.
-#   Pre-foreclosure & probate are the highest-converting cold calls in the
-#   wholesaler playbook; tax delinquent is close behind. Absentee + high
-#   equity is the classic "tired landlord" combo that needs stacking, not
-#   individual weight.
+# Philosophy: A single signal should get a lead into LIKELY territory, not HOT.
+# HOT is reserved for stacked signals + equity. Individual signal weights are
+# intentionally ~40% lower than a year ago — stacking is what closes deals.
 SIGNAL_WEIGHTS = {
-    # Foreclosure family — phone-today level of distress
-    "Notice of Trustee Sale":  75,   # ↑ from 55 — 60-90 day auction deadline
-    "Sheriffs Deed":           60,   # post-foreclosure REO
+    # Foreclosure family — strongest individual signal
+    "Notice of Trustee Sale":  45,
+    "Sheriffs Deed":           35,
 
-    # Estate / probate family — cash-inheritance motivation
-    "Affidavit of Death":      65,   # ↑ from 50
-    "Probate Case":            60,   # ↑ from 45
-    "Affidavit":               15,
+    # Estate / probate family
+    "Affidavit of Death":      40,
+    "Probate Case":            35,
+    "Affidavit":               10,
 
-    # Tax / government liens — clock is ticking
-    "Tax Delinquent":          55,   # ↑ from 40
-    "Federal Tax Lien":        40,   # ↑ from 30
-    "State Tax Lien":          30,   # ↑ from 25
-    "Medicaid Lien":           30,   # Pima AHCCCS
-    "City Lien":               25,
-    "HOA Lien":                20,
+    # Tax / government liens
+    "Tax Delinquent":          30,
+    "Federal Tax Lien":        25,
+    "State Tax Lien":          20,
+    "Medicaid Lien":           20,
+    "City Lien":               15,
+    "HOA Lien":                12,
 
-    # Legal pressure — bringing a buyer = exit strategy
-    "Lis Pendens":             45,   # ↑ from 35
-    "Judgment Lien":           30,
-    "Bankruptcy":              40,   # ↑ from 30
-    "Bankruptcy Discharge":    30,
-    "Divorce":                 30,
+    # Legal pressure
+    "Lis Pendens":             28,
+    "Judgment Lien":           20,
+    "Bankruptcy":              25,
+    "Bankruptcy Discharge":    18,
+    "Divorce":                 18,
 
     # Physical distress
-    "Mechanics Lien":          25,
-    "Code Violation":          30,   # ↑ from 20 — violation = tired owner
-    "Hospital Lien":           18,
+    "Mechanics Lien":          15,
+    "Code Violation":          20,
+    "Hospital Lien":           12,
 }
 
-# Original owner-name / parcel flags — tuned up for Pima's flag-only leads
+# Owner-name / parcel flags — these are circumstantial, not hard signals
 LEGACY_FLAG_WEIGHTS = {
-    "flag_estate_owner":       50,   # ↑ from 40 — "EST OF"/"ESTATE OF" = gold
-    "flag_entity_owner":       -3,   # LLCs are harder to reach but reachable
-    "flag_trust_only":         20,   # ↑ from 15
-    "flag_likely_vacant":      40,   # ↑ from 30
-    "flag_absentee":           18,   # ↑ from 12
-    "flag_out_of_state":       22,   # ↑ from 15 — harder to maintain remotely
-    "flag_long_hold":          12,   # ↑ from 8  — 15+ yr holds = equity-rich
+    "flag_estate_owner":       30,   # "EST OF" in owner name — soft signal
+    "flag_entity_owner":       -3,
+    "flag_trust_only":         12,
+    "flag_likely_vacant":      25,
+    "flag_absentee":           10,
+    "flag_out_of_state":       14,
+    "flag_long_hold":          8,
 }
 
-# Stacking bonus per additional signal on same APN
-STACK_BONUS = 15   # ↑ from 10
+# Stacking bonus — THIS is what closes deals. Stacks > individual signals.
+STACK_BONUS = 25   # per additional signal on same APN (was 15)
 
-# Combo multipliers — the wholesaler playbook is about stacked signals
-# Absentee + OOS + high equity = canonical "tired OOS landlord" — worth extra
-COMBO_BONUS_TIRED_OOS_LANDLORD = 25      # absentee + OOS + equity>=200k
-COMBO_BONUS_ESTATE_LONG_HOLD    = 30     # estate + long hold (inherited property sitting)
-COMBO_BONUS_PROBATE_HIGH_EQUITY = 35     # probate filing + equity>=300k
+# Combo multipliers — proven wholesaler patterns
+COMBO_BONUS_TIRED_OOS_LANDLORD = 30
+COMBO_BONUS_ESTATE_LONG_HOLD    = 35
+COMBO_BONUS_PROBATE_HIGH_EQUITY = 40
 
 # Equity bonuses — more granular for the high end
 EQUITY_BRACKETS = [
@@ -472,6 +469,71 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
         if likely_foreclosure:
             legacy_flags["likely_foreclosure"] = True
 
+        # ── Distress pattern detection (6 mutually-distinct patterns) ─────
+        # Each pattern fires if ANY of its underlying signals/flags are present.
+        # Stack count = count of distinct patterns firing. Multiple flags inside
+        # one pattern still count as 1 (e.g. absentee + OOS + long hold + LLC
+        # all collapse to "Tired Landlord" = 1 stack).
+        enrichment_flags_dict = enrichment["enrichment_flags"]
+        patterns = []  # ordered list of pattern labels that fired on this lead
+
+        # Pattern 1: Foreclosure
+        if (has_nots or has_sheriff or legacy_flags.get("likely_foreclosure") or has_bk):
+            patterns.append("Foreclosure")
+
+        # Pattern 2: Tax Pressure
+        has_tax_pressure = any(s.get("type") in (
+            "Tax Delinquent", "Federal Tax Lien", "State Tax Lien",
+            "City Lien", "Medicaid Lien", "Hospital Lien"
+        ) for s in signal_entries)
+        if has_tax_pressure:
+            patterns.append("Tax Pressure")
+
+        # Pattern 3: Estate
+        has_estate_signal = any(s.get("type") in (
+            "Affidavit of Death", "Probate Case"
+        ) for s in signal_entries)
+        if (has_estate_signal or legacy_flags.get("estate_owner")
+                or enrichment_flags_dict.get("multi_owner_inheritance")
+                or enrichment_flags_dict.get("widow_indicator")):
+            patterns.append("Estate")
+
+        # Pattern 4: Legal Pressure
+        has_legal = any(s.get("type") in (
+            "Lis Pendens", "Judgment Lien", "Divorce",
+            "Mechanics Lien", "HOA Lien"
+        ) for s in signal_entries)
+        if has_legal:
+            patterns.append("Legal")
+
+        # Pattern 5: Vacancy / Abandonment
+        has_code_violation = any(s.get("type") == "Code Violation" for s in signal_entries)
+        if (legacy_flags.get("likely_vacant")
+                or enrichment_flags_dict.get("likely_vacant")
+                or has_code_violation
+                or enrichment_flags_dict.get("corporate_dissolved")):
+            patterns.append("Vacancy")
+
+        # Pattern 6: Tired Landlord
+        # Multiple related flags collapse into this one pattern — doesn't double-count.
+        is_tired_ll = (
+            (legacy_flags.get("absentee") and legacy_flags.get("out_of_state"))
+            or (legacy_flags.get("long_hold") and legacy_flags.get("entity_owner"))
+            or enrichment_flags_dict.get("tired_landlord")
+            or enrichment_flags_dict.get("accidental_landlord")
+        )
+        if is_tired_ll:
+            patterns.append("Tired Landlord")
+
+        stack_count = len(patterns)
+
+        # Pattern-based tier assignment (replaces score-based tier for dashboard)
+        if   stack_count >= 4: tier_key = "hot"
+        elif stack_count == 3: tier_key = "strong"
+        elif stack_count == 2: tier_key = "likely"
+        elif stack_count == 1: tier_key = "watch"
+        else:                  tier_key = "cold"
+
         # ── Combo bonuses — the wholesaler playbook ───────────────────────
         combo_score = 0
         combos_hit = []
@@ -517,8 +579,12 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
 
         total_score = signal_score + legacy_score + enrichment_score + eq_bonus + combo_score
 
-        # Filter: only include if meets min_score threshold
-        if total_score < min_score:
+        # Filter: only include if meets min_score threshold OR has at least 1 pattern
+        if total_score < min_score and stack_count == 0:
+            continue
+
+        # Also filter: drop leads with no distress patterns (cold)
+        if stack_count == 0:
             continue
 
         # Only residential property types by default (can be overridden via dashboard)
@@ -566,6 +632,10 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
             "legacy_flags":     legacy_flags,
             "enrichment_flags": enrichment["enrichment_flags"],
             "combos":           combos_hit,
+            # Distress patterns (the new tier system)
+            "patterns":         patterns,
+            "stack_count":      stack_count,
+            "tier":             tier_key,
             # Signals
             "signals":          signal_entries,
             "signal_count":     len(signal_entries),
@@ -585,8 +655,8 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
         }
         leads.append(lead)
 
-    # Sort by score desc
-    leads.sort(key=lambda x: x["score"], reverse=True)
+    # Sort: stack_count DESC, then score DESC — patterns stacked beat raw score
+    leads.sort(key=lambda x: (x.get("stack_count", 0), x.get("score", 0)), reverse=True)
     log.info(f"produced {len(leads):,} ranked leads (total, before cap)")
     if leads:
         log.info(f"top scores: {[l['score'] for l in leads[:5]]}")
