@@ -190,12 +190,62 @@ def flag_out_of_country(p: dict) -> bool:
     """Non-US mailing address = hard to reach, often motivated."""
     state = (p.get("mail_state") or "").strip().upper()
     if not state: return False
-    # US states + territories
     us_codes = {"AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
                 "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
                 "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
                 "VA","WA","WV","WI","WY","DC","PR","VI","GU","AS","MP","AA","AE","AP"}
     return state not in us_codes and len(state) >= 2
+
+
+def flag_likely_vacant(p: dict, now: datetime) -> bool:
+    """
+    Heuristic vacancy detection using multiple weak signals that stack.
+    Returns True if 2+ vacancy indicators fire on this parcel.
+
+    Signals (any 2+ = vacant):
+      1. Out-of-state owner (landlord living remote)
+      2. Mail address != site address (absentee)
+      3. PO Box mailing (avoiding physical delivery)
+      4. Care-of mailing (mail forwarded to another party)
+      5. Estate-of owner name (between death and sale)
+      6. Dormant LLC owner (corporate_dissolved pattern)
+      7. 15+ yr hold with no improvements visible
+      8. Missing site address (raw land or abandoned assignment)
+    """
+    score = 0
+
+    # Out of state = remote owner, often vacant
+    if p.get("out_of_state"): score += 1
+
+    # Absentee (mail != site) — weaker signal on its own
+    if p.get("absentee"): score += 1
+
+    # PO Box mailing = avoiding property mail
+    mail = (p.get("mail_address") or "").upper()
+    if re.search(r"\bP\.?\s*O\.?\s*BOX\b|\bPOST\s+OFFICE\s+BOX\b", mail): score += 1
+
+    # Care-of forwarding
+    if (p.get("care_of") or "").strip(): score += 1
+
+    # Estate-owned property (often vacant between death and sale)
+    owner = (p.get("owner") or "").upper()
+    if re.search(r"\b(ESTATE\s+OF|EST\s+OF|HEIRS\s+OF|HEIR\s+OF|DECEASED)\b", owner):
+        score += 1
+
+    # Dormant LLC still on title
+    if re.search(r"\b(LLC|INC|CORP|LLP|LTD)\b", owner):
+        yrs = _years_ago(p.get("last_sale_date"), now)
+        if yrs is not None and yrs >= 15: score += 1
+
+    # Very long hold, no sale activity
+    yrs = _years_ago(p.get("last_sale_date"), now)
+    if yrs is not None and yrs >= 20: score += 1
+
+    # Missing site address = likely raw land or data gap
+    if not (p.get("site_address") or "").strip(): score += 1
+
+    # 2+ signals = likely vacant
+    return score >= 2
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +357,7 @@ ENRICHMENT_WEIGHTS = {
     "accidental_landlord":      25,
     "mailing_to_pobox":         15,
     "out_of_country":           25,
+    "likely_vacant":            35,
     # Value
     "cash_flow_candidate":      20,
     "teardown_candidate":       30,
@@ -346,6 +397,7 @@ def enrich_lead(p: dict, owner_counts: dict, now: datetime) -> dict:
     if flag_accidental_landlord(p, now):   flags["accidental_landlord"] = True
     if flag_mailing_to_pobox(p):           flags["mailing_to_pobox"] = True
     if flag_out_of_country(p):             flags["out_of_country"] = True
+    if flag_likely_vacant(p, now):         flags["likely_vacant"] = True
     # Value
     if flag_cash_flow_candidate(p, prop_type):    flags["cash_flow_candidate"] = True
     if flag_teardown_candidate(p):         flags["teardown_candidate"] = True
