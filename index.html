@@ -660,7 +660,7 @@
     <div class="kpis">
       <div class="kpi"><div class="val" id="kpi-totalall">—</div><div class="lbl">Total Pool</div></div>
       <div class="kpi"><div class="val" id="kpi-total">—</div><div class="lbl">In View</div></div>
-      <div class="kpi"><div class="val" id="kpi-new">—</div><div class="lbl">🎯 Opps</div></div>
+      <div class="kpi"><div class="val" id="kpi-new">—</div><div class="lbl">🎯 New</div></div>
       <div class="kpi"><div class="val" id="kpi-stacked">—</div><div class="lbl">Stacked 2+</div></div>
       <div class="kpi"><div class="val" id="kpi-updated">—</div><div class="lbl">Updated</div></div>
       <div class="kpi live-kpi"><span class="live-dot"></span><span class="live-text">LIVE</span></div>
@@ -836,8 +836,13 @@
 
       <div class="filter-group">
         <h3>Min Tier</h3>
-        <div class="slider-row"><span>Cold</span><span class="val" id="f-score-val">Any</span><span>🔥 Hot</span></div>
-        <input type="range" id="f-score" min="0" max="200" value="0" step="5" />
+        <div class="chip-row" id="f-tier">
+          <span class="chip" data-val="any">Any</span>
+          <span class="chip" data-val="watch">👀 Watch+</span>
+          <span class="chip" data-val="likely">⚡ Likely+</span>
+          <span class="chip" data-val="strong">💎 Strong+</span>
+          <span class="chip" data-val="hot">🔥 Hot only</span>
+        </div>
       </div>
 
       <div class="filter-group">
@@ -869,10 +874,10 @@
         <table id="tbl">
           <thead>
             <tr>
-              <th data-sort="score">Tier <span class="sort-arrow">▼</span></th>
+              <th data-sort="stack_count">Tier <span class="sort-arrow">▼</span></th>
               <th data-sort="county">Co.</th>
-              <th data-sort="signal_count">Stack</th>
-              <th data-sort="signals">Distress Patterns</th>
+              <th data-sort="stack_count">Stack</th>
+              <th data-sort="stack_count">Distress Patterns</th>
               <th data-sort="site_address">Property</th>
               <th data-sort="owner">Owner</th>
               <th data-sort="equity_est">Equity</th>
@@ -915,6 +920,13 @@
         <div class="big">Drop tax roll CSV here</div>
         <div class="small">or click to browse · accepts .csv / .tsv · all processing happens in your browser, nothing is uploaded</div>
         <input type="file" id="file-input" accept=".csv,.tsv,text/csv" />
+      </div>
+
+      <div style="margin:12px 0 0; padding:10px 14px; background:var(--bg-elev); border-left:3px solid var(--accent); border-radius:3px; font-size:11px; color:var(--text-muted); line-height:1.5;">
+        <strong style="color:var(--accent)">Pima Recorder scrape?</strong>
+        For fresh Pima Recorder data (NOTS, Lis Pendens, Judgments, AHCCCS, City Lien, Sheriff's Deed),
+        use the CLI pipeline instead — it handles the full XLSX/CSV format from the scraper and
+        writes directly to the signals pipeline. See <code>PIMA_RECORDER_SETUP.md</code> in the repo.
       </div>
 
       <div class="mapping" id="mapping">
@@ -1003,6 +1015,7 @@ const state = {
     portfolio:    new Set(),
     velocity:     new Set(),
     minScore: 0,
+    minTier: "any",
     minEquity: 0,
     search: "",
   },
@@ -1327,17 +1340,11 @@ function decorateFilterCounts() {
     // Property types
     if (ptype in counts) counts[ptype]++;
 
-    // Deal intent — composite
-    if (hasSig("Notice of Trustee Sale") || hasSig("Sheriffs Deed")
-        || hasSig("Tax Delinquent") || hasSig("Federal Tax Lien")
-        || hasSig("Bankruptcy") || ef.negative_equity
-        || combos.includes("tired_oos_landlord")) counts.foreclosure_risk++;
-    if (hasSig("Lis Pendens") || hasSig("Judgment Lien") || hasSig("Divorce")
-        || hasSig("Bankruptcy") || hasSig("Probate Case")) counts.lawsuit_risk++;
-    if (hasSig("Federal Tax Lien") || hasSig("State Tax Lien") || hasSig("City Lien")
-        || hasSig("Medicaid Lien") || hasSig("Hospital Lien") || hasSig("Mechanics Lien")
-        || hasSig("HOA Lien") || hasSig("Judgment Lien") || hasSig("Tax Delinquent"))
-      counts.lien_pressure++;
+    // Deal intent — use patterns array (single source of truth with filter logic)
+    const pats = l.patterns || [];
+    if (pats.includes("Foreclosure")) counts.foreclosure_risk++;
+    if (pats.includes("Legal") || hasSig("Probate Case")) counts.lawsuit_risk++;
+    if (pats.includes("Tax Pressure") || pats.includes("Legal")) counts.lien_pressure++;
 
     // Legacy flags
     if (lf.absentee) counts.absentee++;
@@ -1433,12 +1440,18 @@ if (stackSel) {
     applyFilters();
   });
 }
-$("#f-score").addEventListener("input", e => {
-  state.filters.minScore = +e.target.value;
-  const tier = scoreTier(state.filters.minScore);
-  $("#f-score-val").textContent = state.filters.minScore === 0 ? "Any" : `${tier.emoji} ${tier.label}+`;
-  applyFilters();
+// Min Tier chip buttons — single-select (radio-style)
+$$("#f-tier .chip").forEach(el => {
+  el.addEventListener("click", () => {
+    $$("#f-tier .chip").forEach(c => c.classList.remove("active"));
+    el.classList.add("active");
+    state.filters.minTier = el.dataset.val;
+    applyFilters();
+  });
 });
+// Default: "Any" active
+document.querySelector('#f-tier .chip[data-val="any"]')?.classList.add("active");
+
 $("#f-equity").addEventListener("input", e => {
   state.filters.minEquity = +e.target.value;
   $("#f-eq-val").textContent = state.filters.minEquity >= 1000 ? (state.filters.minEquity/1000)+"k" : state.filters.minEquity;
@@ -1470,26 +1483,22 @@ function matches(lead) {
         if (!isNewLead(lead)) return false;
         break;
       case "preforeclosure":
-        if (!lf.likely_foreclosure
-            && !hasSignal("Notice of Trustee Sale")
-            && !hasSignal("Sheriffs Deed")) return false;
+        if (!(lead.patterns || []).includes("Foreclosure")) return false;
         break;
       case "estate":
-        if (!hasSignal("Affidavit of Death") && !hasSignal("Probate Case")
-            && !lf.estate_owner && !ef.multi_owner_inheritance && !ef.widow_indicator) return false;
+        if (!(lead.patterns || []).includes("Estate")) return false;
         break;
       case "taxlien":
-        if (!hasSignal("Tax Delinquent") && !hasSignal("State Tax Lien")
-            && !hasSignal("Federal Tax Lien") && !hasSignal("City Lien")) return false;
+        if (!(lead.patterns || []).includes("Tax Pressure")) return false;
         break;
       case "absentee_equity":
-        if (!(lf.absentee && lf.out_of_state && (lead.equity_est||0) >= 200000)) return false;
+        if (!(lead.patterns || []).includes("Tired Landlord")) return false;
         break;
       case "high_equity":
         if ((lead.equity_est||0) < 300000) return false;
         break;
       case "stacked":
-        if ((lead.signal_count||0) < 2 && !(lead.combos||[]).length) return false;
+        if ((lead.stack_count||0) < 2) return false;
         break;
     }
   }
@@ -1502,36 +1511,19 @@ function matches(lead) {
   if (f.intent.size > 0) {
     for (const intent of f.intent) {
       let intentHit = false;
+      const pats = lead.patterns || [];
       switch (intent) {
         case "foreclosure_risk":
-          // Active foreclosure signals OR leading indicators (tax delinquent + distressed combos)
-          intentHit = hasSignal("Notice of Trustee Sale")
-                   || hasSignal("Sheriffs Deed")
-                   || hasSignal("Tax Delinquent")
-                   || hasSignal("Federal Tax Lien")
-                   || hasSignal("Bankruptcy")
-                   || ef.negative_equity
-                   || combos.includes("tired_oos_landlord");
+          // Real foreclosure signals only — uses the Foreclosure pattern
+          intentHit = pats.includes("Foreclosure");
           break;
         case "lawsuit_risk":
-          // Active lawsuits / pending legal action on title or owner
-          intentHit = hasSignal("Lis Pendens")
-                   || hasSignal("Judgment Lien")
-                   || hasSignal("Divorce")
-                   || hasSignal("Bankruptcy")
-                   || hasSignal("Probate Case");
+          // Lawsuit / judgment / divorce / probate — uses the Legal + Estate patterns
+          intentHit = pats.includes("Legal") || hasSignal("Probate Case");
           break;
         case "lien_pressure":
-          // Any recorded lien creating seller motivation
-          intentHit = hasSignal("Federal Tax Lien")
-                   || hasSignal("State Tax Lien")
-                   || hasSignal("City Lien")
-                   || hasSignal("Medicaid Lien")
-                   || hasSignal("Hospital Lien")
-                   || hasSignal("Mechanics Lien")
-                   || hasSignal("HOA Lien")
-                   || hasSignal("Judgment Lien")
-                   || hasSignal("Tax Delinquent");
+          // Any recorded lien — uses the Tax + Legal patterns
+          intentHit = pats.includes("Tax Pressure") || pats.includes("Legal");
           break;
       }
       if (!intentHit) return false;
@@ -1557,7 +1549,7 @@ function matches(lead) {
   if (f.flags.has("hide_cash_buyer") && lf.entity_owner) return false;
 
   // Signal stack depth (dropdown) — minimum number of signals stacked
-  if (f.stackDepth > 0 && (lead.signal_count || 0) < f.stackDepth) return false;
+  if (f.stackDepth > 0 && (lead.stack_count || 0) < f.stackDepth) return false;
 
   // All category chip groups — require ALL selected chips in each group to fire
   const checkGroup = (group) => {
@@ -1574,7 +1566,14 @@ function matches(lead) {
   if (!checkGroup(f.portfolio))  return false;
   if (!checkGroup(f.velocity))   return false;
 
-  if ((lead.score||0) < f.minScore) return false;
+  // Min tier filter — maps tier names to stack_count thresholds
+  if (f.minTier && f.minTier !== "any") {
+    const sc = lead.stack_count || 0;
+    if (f.minTier === "hot"    && sc < 4) return false;
+    if (f.minTier === "strong" && sc < 3) return false;
+    if (f.minTier === "likely" && sc < 2) return false;
+    if (f.minTier === "watch"  && sc < 1) return false;
+  }
   if ((lead.equity_est||0) < f.minEquity) return false;
 
   if (f.search) {
@@ -1614,24 +1613,16 @@ function computeQuickListCounts() {
     counts.all++;
     if (isNewLead(lead)) counts.new++;
 
-    const sigs = new Set((lead.signals||[]).map(s => s.type));
+    const pats = lead.patterns || [];
     const lf = lead.legacy_flags || {};
-    const ef = lead.enrichment_flags || {};
 
-    if (lf.likely_foreclosure
-        || sigs.has("Notice of Trustee Sale") || sigs.has("Sheriffs Deed"))
-      counts.preforeclosure++;
-    if (sigs.has("Affidavit of Death") || sigs.has("Probate Case")
-        || lf.estate_owner || ef.multi_owner_inheritance || ef.widow_indicator)
-      counts.estate++;
-    if (sigs.has("Tax Delinquent") || sigs.has("State Tax Lien")
-        || sigs.has("Federal Tax Lien") || sigs.has("City Lien"))
-      counts.taxlien++;
-    if (lf.absentee && lf.out_of_state && (lead.equity_est||0) >= 200000)
-      counts.absentee_equity++;
+    // Use patterns array as single source of truth (same as matches() logic)
+    if (pats.includes("Foreclosure")) counts.preforeclosure++;
+    if (pats.includes("Estate")) counts.estate++;
+    if (pats.includes("Tax Pressure")) counts.taxlien++;
+    if (pats.includes("Tired Landlord")) counts.absentee_equity++;
     if ((lead.equity_est||0) >= 300000) counts.high_equity++;
-    if ((lead.signal_count||0) >= 2 || (lead.combos||[]).length > 0)
-      counts.stacked++;
+    if ((lead.stack_count||0) >= 2) counts.stacked++;
   }
   // Write counts back to the UI + dim zero-count tiles
   for (const k of Object.keys(counts)) {
@@ -1763,6 +1754,12 @@ function sortFiltered() {
   state.filtered.sort((a,b) => {
     let av = a[key], bv = b[key];
     if (key === "signals") { av = (a.signals||[]).length; bv = (b.signals||[]).length; }
+    // Stack sort: primary stack_count, secondary score (within same stack depth, highest score first)
+    if (key === "stack_count") {
+      const sa = (+a.stack_count||0), sb = (+b.stack_count||0);
+      if (sa !== sb) return (sa - sb) * dir;
+      return ((+a.score||0) - (+b.score||0)) * dir;
+    }
     if (av == null) av = "";
     if (bv == null) bv = "";
     if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
@@ -1884,7 +1881,7 @@ function hideTierTooltip() {
 function renderKPIs() {
   const f = state.filtered;
   $("#kpi-total").textContent = f.length.toLocaleString();
-  $("#kpi-stacked").textContent = f.filter(x => (x.signal_count||0) >= 2).length.toLocaleString();
+  $("#kpi-stacked").textContent = f.filter(x => (x.stack_count||0) >= 2).length.toLocaleString();
 
   // Update county tab badge counts (based on unfiltered leads so tabs always show total per county)
   const mAll  = document.getElementById("tab-count-all");
@@ -1940,12 +1937,12 @@ function renderDetail() {
     ` : ""}
 
     <div class="section">
-      <h4>Score ${l.score||0}</h4>
+      <h4>📊 Tier Breakdown</h4>
       <div class="kv">
-        <span class="k">Signals</span><span class="v">+${l.score_parts?.signals||0}</span>
-        <span class="k">Flags</span><span class="v">+${(l.score_parts?.legacy||0) + (l.score_parts?.enrichment||0)}</span>
-        <span class="k">Combo bonus</span><span class="v">+${l.score_parts?.combos||0}</span>
-        <span class="k">Equity bonus</span><span class="v">+${l.score_parts?.equity||0}</span>
+        <span class="k">Distress Stack</span><span class="v">${l.stack_count||0} pattern${(l.stack_count||0)===1?'':'s'}</span>
+        <span class="k">Raw Score</span><span class="v">${l.score||0}</span>
+        <span class="k">Recorded Signals</span><span class="v">${l.signal_count||0}</span>
+        <span class="k">Equity Est.</span><span class="v" style="color:var(--ok)">${fmtM(l.equity_est)}</span>
       </div>
     </div>
 

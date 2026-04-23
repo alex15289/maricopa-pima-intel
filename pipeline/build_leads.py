@@ -514,14 +514,19 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
                 or enrichment_flags_dict.get("corporate_dissolved")):
             patterns.append("Vacancy")
 
-        # Pattern 6: Tired Landlord
-        # Multiple related flags collapse into this one pattern — doesn't double-count.
+        # Pattern 6: Tired Landlord — proper definition
+        # Must have LONG HOLD + ABSENTEE (the core burden pattern).
+        # Additional qualifier: multifamily property OR out-of-state OR entity owner.
+        # A simple absentee flip-hold isn't "tired" — needs the multi-year burden.
         is_tired_ll = (
-            (legacy_flags.get("absentee") and legacy_flags.get("out_of_state"))
-            or (legacy_flags.get("long_hold") and legacy_flags.get("entity_owner"))
-            or enrichment_flags_dict.get("tired_landlord")
-            or enrichment_flags_dict.get("accidental_landlord")
-        )
+            legacy_flags.get("long_hold")
+            and legacy_flags.get("absentee")
+            and (
+                prop_type in ("multifamily_2_4", "multifamily_5_20", "multifamily_20p")
+                or legacy_flags.get("out_of_state")
+                or legacy_flags.get("entity_owner")
+            )
+        ) or enrichment_flags_dict.get("tired_landlord")  # enrichment flag is already strict
         if is_tired_ll:
             patterns.append("Tired Landlord")
 

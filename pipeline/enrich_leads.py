@@ -54,10 +54,14 @@ def classify_property_type(puc: Optional[str]) -> str:
     if code == "0141":                    return "multifamily_2_4"
     if code == "0142":                    return "multifamily_5_20"
     if code == "0143":                    return "multifamily_20p"
-    if code == "0180":                    return "vacant_land"
+    # Vacant land: Maricopa/Pima use several codes for empty parcels
+    if code in {"0180", "0181", "0182", "0190", "0191", "0192", "0193", "0195", "0196"}:
+        return "vacant_land"
     if code.startswith("02"):             return "commercial"
     if code.startswith("03"):             return "industrial"
     if code.startswith("04"):             return "agricultural"
+    if code.startswith("08"):             return "agricultural"  # Pima agricultural
+    if code.startswith("09"):             return "vacant_land"   # Pima vacant/undeveloped
     # Fallback: if it starts with 01, it's residential-ish
     if code.startswith("01"):             return "sfr"
     return "other"
