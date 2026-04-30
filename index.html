@@ -7,30 +7,41 @@
 <meta name="description" content="Operator dashboard for Maricopa and Pima County motivated seller signals" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   :root {
-    --bg:           #0b1220;
-    --bg-panel:     #111a2e;
-    --bg-elev:      #17223c;
-    --border:       #223151;
-    --text:         #e6ecf5;
-    --text-dim:     #8a9bb8;
-    --text-muted:   #5a6b88;
-    --accent:       #d4a94a;     /* gold */
-    --accent-dim:   #a8842f;
-    --accent-soft:  #d4a94a22;
-    --navy:         #1e2d4d;
-    --pima:         #c97d3c;     /* desert copper */
-    --maricopa:     #3c8ec9;     /* sky/saguaro */
-    --danger:       #e26d5c;
-    --ok:           #7ab988;
-    --warn:         #e2b85c;
+    /* Light theme — inspired by Texas Property Intel */
+    --bg:           #f7f9fc;       /* page background */
+    --bg-panel:     #ffffff;       /* cards / sidebar */
+    --bg-elev:      #f1f4f9;       /* hover / elevated panels */
+    --border:       #e2e8f0;       /* subtle borders */
+    --text:         #0f172a;       /* primary text */
+    --text-dim:     #475569;       /* secondary text */
+    --text-muted:   #94a3b8;       /* tertiary text */
+    --accent:       #3b82f6;       /* electric blue (Xcerebro) */
+    --accent-dim:   #2563eb;       /* deeper blue */
+    --accent-soft:  #3b82f615;     /* tinted bg */
+    --navy:         #1e3a8a;       /* deep navy accent */
+    --pima:         #ea580c;       /* desert orange */
+    --maricopa:     #0284c7;       /* sky blue */
+    --danger:       #dc2626;       /* alert red */
+    --ok:           #16a34a;       /* success green */
+    --warn:         #f59e0b;       /* warning amber */
+    /* Pattern badge colors — saturated to pop on white */
+    --pat-foreclosure: #dc2626;
+    --pat-tax:         #f59e0b;
+    --pat-estate:      #9333ea;
+    --pat-legal:       #2563eb;
+    --pat-vacancy:     #64748b;
+    --pat-landlord:    #16a34a;
+    /* Shadows for depth on light bg */
+    --shadow-sm: 0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.05);
+    --shadow-md: 0 2px 6px rgba(15,23,42,0.06), 0 4px 8px rgba(15,23,42,0.04);
   }
   * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text); font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size:13px; }
+  html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text); font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; font-size:13px; }
   body { overflow:hidden; }
   a { color:var(--accent); text-decoration:none; }
   button, input, select { font:inherit; color:inherit; }
@@ -41,12 +52,13 @@
   header {
     display:flex; align-items:center; gap:24px;
     padding:14px 22px; border-bottom:1px solid var(--border);
-    background: linear-gradient(180deg, #0e1628, #0b1220);
+    background: var(--bg-panel);
+    border-bottom:1px solid var(--border);
   }
   .brand { display:flex; align-items:baseline; gap:10px; }
   .brand h1 {
     font-family:"Fraunces", serif; font-weight:700; font-size:22px; margin:0;
-    letter-spacing:-0.015em;
+    letter-spacing:-0.015em; color:var(--text);
   }
   .brand h1 .dot { color:var(--accent); }
   .brand .sub {
@@ -55,15 +67,15 @@
   }
   .kpis { display:flex; gap:22px; margin-left:auto; align-items:center; }
   .kpi { display:flex; flex-direction:column; gap:2px; text-align:right; }
-  .kpi .val { font-family:"Fraunces",serif; font-size:20px; font-weight:700; color:var(--accent); }
+  .kpi .val { font-family:"Fraunces",serif; font-size:20px; font-weight:700; color:var(--text); }
   .kpi .lbl { font-size:9.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.14em; }
-  .live-kpi { flex-direction:row; align-items:center; gap:7px; padding:6px 10px; border:1px solid rgba(34,197,94,.35); border-radius:16px; background:rgba(34,197,94,.05); }
-  .live-dot { width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.7); animation:live-pulse 1.6s ease-out infinite; }
-  .live-text { font-size:10.5px; font-weight:700; letter-spacing:0.18em; color:#22c55e; font-family:"JetBrains Mono",monospace; }
+  .live-kpi { flex-direction:row; align-items:center; gap:7px; padding:6px 12px; border:1px solid #bbf7d0; border-radius:16px; background:#f0fdf4; }
+  .live-dot { width:8px; height:8px; border-radius:50%; background:#16a34a; box-shadow:0 0 0 0 rgba(22,163,74,.5); animation:live-pulse 1.6s ease-out infinite; }
+  .live-text { font-size:10.5px; font-weight:700; letter-spacing:0.18em; color:#15803d; font-family:"Inter",sans-serif; }
   @keyframes live-pulse {
-    0%   { box-shadow:0 0 0 0 rgba(34,197,94,.7); }
-    70%  { box-shadow:0 0 0 10px rgba(34,197,94,0); }
-    100% { box-shadow:0 0 0 0 rgba(34,197,94,0); }
+    0%   { box-shadow:0 0 0 0 rgba(22,163,74,.5); }
+    70%  { box-shadow:0 0 0 10px rgba(22,163,74,0); }
+    100% { box-shadow:0 0 0 0 rgba(22,163,74,0); }
   }
 
   /* ---------- County tab bar ---------- */
@@ -72,20 +84,20 @@
     background:var(--bg-panel);
   }
   .county-tab {
-    padding:12px 22px; cursor:pointer; user-select:none;
-    font-size:12px; letter-spacing:0.14em; text-transform:uppercase;
-    color:var(--text-muted); border-bottom:2px solid transparent;
-    font-family:"JetBrains Mono", monospace; font-weight:700;
+    padding:14px 22px; cursor:pointer; user-select:none;
+    font-size:12px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--text-dim); border-bottom:2px solid transparent;
+    font-family:"Inter", sans-serif; font-weight:600;
     display:flex; align-items:center; gap:8px;
     transition: all .15s ease;
   }
-  .county-tab:hover { color:var(--text); background:rgba(255,255,255,.02); }
-  .county-tab .tab-count { font-size:10px; color:var(--text-muted); font-weight:400; }
-  .county-tab.active { color:var(--accent); border-bottom-color:var(--accent); background:rgba(212,175,55,.04); }
+  .county-tab:hover { color:var(--text); background:var(--bg-elev); }
+  .county-tab .tab-count { font-size:10px; color:var(--text-muted); font-weight:500; }
+  .county-tab.active { color:var(--accent); border-bottom-color:var(--accent); background:var(--accent-soft); }
   .county-tab.active .tab-count { color:var(--accent); }
-  .county-tab[data-tab="Maricopa"].active { color:var(--maricopa); border-bottom-color:var(--maricopa); background:rgba(60,142,201,.06); }
+  .county-tab[data-tab="Maricopa"].active { color:var(--maricopa); border-bottom-color:var(--maricopa); background:#f0f9ff; }
   .county-tab[data-tab="Maricopa"].active .tab-count { color:var(--maricopa); }
-  .county-tab[data-tab="Pima"].active { color:var(--pima); border-bottom-color:var(--pima); background:rgba(201,125,60,.06); }
+  .county-tab[data-tab="Pima"].active { color:var(--pima); border-bottom-color:var(--pima); background:#fff7ed; }
   .county-tab[data-tab="Pima"].active .tab-count { color:var(--pima); }
 
   /* ---------- Tier pills (replace numeric score) ---------- */
@@ -95,17 +107,18 @@
     letter-spacing:0.1em; font-family:"JetBrains Mono",monospace;
     border:1px solid; white-space:nowrap; cursor:help;
   }
-  .tier-pill.hot    { background:rgba(239,68,68,.10);  border-color:rgba(239,68,68,.55);  color:#f87171; }
-  .tier-pill.strong { background:rgba(212,175,55,.12); border-color:rgba(212,175,55,.55); color:#d4af37; }
-  .tier-pill.likely { background:rgba(234,179,8,.08);  border-color:rgba(234,179,8,.45);  color:#eab308; }
-  .tier-pill.watch  { background:rgba(148,163,184,.08); border-color:rgba(148,163,184,.35); color:#94a3b8; }
-  .tier-pill.cold   { background:rgba(100,116,139,.05); border-color:rgba(100,116,139,.2); color:#64748b; }
+  .tier-pill.hot    { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+  .tier-pill.strong { background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }
+  .tier-pill.likely { background:#fffbeb; border-color:#fde68a; color:#b45309; }
+  .tier-pill.watch  { background:#f1f5f9; border-color:#cbd5e1; color:#475569; }
+  .tier-pill.cold   { background:#f8fafc; border-color:#e2e8f0; color:#94a3b8; }
   .tier-raw { font-size:9px; color:var(--text-muted); margin-left:6px; font-family:"JetBrains Mono",monospace; }
 
   /* Tooltip for "Why HOT?" */
   .tier-tooltip {
     position:absolute; z-index:9999; max-width:260px;
-    background:#0a101c; border:1px solid var(--accent-dim); border-radius:6px;
+    background:var(--bg-panel); border:1px solid var(--border); border-radius:6px;
+    box-shadow:var(--shadow-md);
     padding:10px 12px; font-size:11px; line-height:1.5;
     box-shadow:0 8px 28px rgba(0,0,0,.6);
     pointer-events:none; opacity:0; transition:opacity .15s;
@@ -126,9 +139,9 @@
   }
   .filter-group { margin-bottom:22px; }
   .filter-group h3 {
-    margin:0 0 10px; font-size:10px; color:var(--accent); letter-spacing:0.18em;
+    margin:0 0 10px; font-size:10px; color:var(--text-dim); letter-spacing:0.12em;
     text-transform:uppercase; font-weight:700;
-    border-bottom:1px solid var(--border); padding-bottom:6px;
+    border-bottom:1px solid var(--border); padding-bottom:8px;
   }
   .chip-row { display:flex; flex-wrap:wrap; gap:6px; }
   .chip {
@@ -155,13 +168,14 @@
   input[type="search"]:focus, select:focus { outline:none; border-color:var(--accent); }
 
   .btn {
-    padding:8px 12px; border:1px solid var(--border); background:var(--bg-elev);
-    color:var(--text); border-radius:4px; cursor:pointer; font-size:11px;
-    text-transform:uppercase; letter-spacing:0.1em;
+    padding:9px 14px; border:1px solid var(--border); background:var(--bg-panel);
+    color:var(--text); border-radius:6px; cursor:pointer; font-size:11px;
+    text-transform:uppercase; letter-spacing:0.06em; font-weight:600;
+    transition:all .15s ease;
   }
-  .btn:hover { border-color:var(--accent); color:var(--accent); }
-  .btn.primary { background:var(--accent); color:#0b1220; border-color:var(--accent); font-weight:700; }
-  .btn.primary:hover { background:var(--accent-dim); }
+  .btn:hover { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+  .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+  .btn.primary:hover { background:var(--accent-dim); border-color:var(--accent-dim); color:#fff; }
   .btn-row { display:flex; gap:8px; flex-wrap:wrap; }
 
   /* ---------- Middle: table + map (table-dominant) ---------- */
@@ -180,26 +194,26 @@
   .map-pane { overflow:hidden; position:relative; }
   table { width:100%; border-collapse:collapse; font-size:12px; }
   thead th {
-    position:sticky; top:0; background:var(--bg-panel); color:var(--accent);
-    font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
-    font-size:10px; text-align:left; padding:10px 12px; border-bottom:1px solid var(--border);
+    position:sticky; top:0; background:var(--bg-panel); color:var(--text-dim);
+    font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
+    font-size:10px; text-align:left; padding:12px 14px; border-bottom:1px solid var(--border);
     cursor:pointer; user-select:none;
   }
-  thead th:hover { color:#fff; }
+  thead th:hover { color:var(--accent); background:var(--bg-elev); }
   thead th .sort-arrow { opacity:0.45; margin-left:4px; }
   thead th.sorted .sort-arrow { opacity:1; color:var(--accent); }
   tbody tr {
-    border-bottom:1px solid #1a263f; cursor:pointer; transition:background .08s ease;
+    border-bottom:1px solid var(--border); cursor:pointer; transition:background .08s ease;
   }
   tbody tr:hover { background:var(--bg-elev); }
   tbody tr.selected { background:var(--accent-soft); }
-  tbody td { padding:9px 12px; }
+  tbody td { padding:11px 14px; color:var(--text); }
   .county-pill {
-    display:inline-block; padding:2px 6px; border-radius:3px; font-size:9.5px;
-    letter-spacing:0.08em; text-transform:uppercase; font-weight:700;
+    display:inline-block; padding:3px 7px; border-radius:4px; font-size:9.5px;
+    letter-spacing:0.06em; text-transform:uppercase; font-weight:700;
   }
-  .county-pill.Maricopa { background:#3c8ec922; color:var(--maricopa); }
-  .county-pill.Pima     { background:#c97d3c22; color:var(--pima); }
+  .county-pill.Maricopa { background:#e0f2fe; color:#0369a1; }
+  .county-pill.Pima     { background:#ffedd5; color:#9a3412; }
   .score-bar {
     display:inline-block; vertical-align:middle; width:60px; height:6px;
     background:var(--bg-elev); border-radius:3px; overflow:hidden; margin-right:8px;
@@ -212,9 +226,9 @@
   }
   .signal-tag.stack { background:var(--accent); color:#0b1220; border-color:var(--accent); font-weight:700; }
 
-  #map { height:100%; background:#0e1628; }
+  #map { height:100%; background:var(--bg-elev); }
   /* Override leaflet defaults */
-  .leaflet-container { background:#0e1628; font-family:"JetBrains Mono", monospace; }
+  .leaflet-container { background:var(--bg-elev); font-family:"Inter", sans-serif; }
   .leaflet-popup-content-wrapper { background:var(--bg-panel); color:var(--text); border-radius:4px; }
   .leaflet-popup-tip { background:var(--bg-panel); }
 
@@ -318,46 +332,50 @@
     min-height:76px; align-items:center;
   }
   .ql-tile {
-    flex:0 0 auto; min-width:140px; padding:10px 14px;
-    border:1px solid var(--border); border-radius:6px; background:var(--bg-elev);
-    cursor:pointer; transition:all .12s ease;
-    display:flex !important; flex-direction:column !important; gap:2px;
-    min-height:52px;
+    flex:0 0 auto; min-width:140px; padding:12px 16px;
+    border:1px solid var(--border); border-radius:8px; background:var(--bg-panel);
+    cursor:pointer; transition:all .15s ease;
+    display:flex !important; flex-direction:column !important; gap:3px;
+    min-height:56px; box-shadow:var(--shadow-sm);
   }
-  .ql-tile:hover { border-color:var(--accent); transform:translateY(-1px); }
+  .ql-tile:hover { border-color:var(--accent); transform:translateY(-1px); box-shadow:var(--shadow-md); }
   .ql-tile.active {
     background:var(--accent-soft); border-color:var(--accent);
-    box-shadow:0 0 0 1px var(--accent);
+    box-shadow:0 0 0 2px var(--accent-soft), var(--shadow-sm);
   }
   .ql-tile .ql-icon {
     font-size:16px !important; display:block !important;
-    line-height:1.2 !important; color:var(--text) !important;
+    line-height:1.2 !important;
   }
   .ql-tile .ql-label {
-    font-size:11px !important; font-weight:700; letter-spacing:0.04em;
-    text-transform:uppercase; color:var(--text) !important;
+    font-size:11px !important; font-weight:600; letter-spacing:0.02em;
+    text-transform:uppercase; color:var(--text-dim) !important;
     display:block !important; line-height:1.3 !important;
   }
   .ql-tile .ql-count {
-    font-family:"Fraunces",serif; font-size:16px !important;
-    color:var(--accent) !important; display:block !important; line-height:1.2 !important;
+    font-family:"Fraunces",serif; font-size:18px !important;
+    color:var(--text) !important; display:block !important; line-height:1.2 !important; font-weight:700;
   }
+  .ql-tile.active .ql-count { color:var(--accent) !important; }
   .ql-tile.new-leads .ql-icon { animation: newpulse 1.8s ease-in-out infinite; }
 
   /* Dimmed state for tiles with 0 matching leads */
   .ql-tile.empty {
-    opacity:0.35; cursor:not-allowed; pointer-events:none;
-    filter:grayscale(0.8);
+    opacity:0.45; cursor:not-allowed; pointer-events:none;
+    filter:grayscale(0.6);
   }
   .ql-tile.empty .ql-count { color:var(--text-muted) !important; }
 
   /* Filter chip count badges + empty-chip dimming */
   .chip-count {
-    display:inline-block; margin-left:5px; padding:0 6px;
-    background:var(--bg-panel); color:var(--accent);
+    display:inline-block; margin-left:5px; padding:1px 7px;
+    background:var(--bg-elev); color:var(--text-dim);
     border-radius:9px; font-size:9.5px; font-weight:700;
-    font-family:"JetBrains Mono",monospace; letter-spacing:0.02em;
+    font-family:"Inter",sans-serif; letter-spacing:0.02em;
     vertical-align:middle; min-width:16px; text-align:center;
+  }
+  .chip.active .chip-count {
+    background:var(--accent); color:#fff;
   }
   .chip-empty {
     opacity:0.35 !important; cursor:not-allowed !important;
@@ -372,12 +390,12 @@
     font-size:9.5px; font-weight:700; letter-spacing:0.02em;
     text-transform:uppercase; white-space:nowrap;
   }
-  .pattern-badge.pat-foreclosure { background:#5d1a1a; color:#ff8b7b; border:1px solid #ff5f4b33; }
-  .pattern-badge.pat-tax         { background:#5c4017; color:#fbbf4a; border:1px solid #fbbf4a33; }
-  .pattern-badge.pat-estate      { background:#3a2b5c; color:#c5a3ff; border:1px solid #c5a3ff33; }
-  .pattern-badge.pat-legal       { background:#1e3a5c; color:#7fb2ff; border:1px solid #7fb2ff33; }
-  .pattern-badge.pat-vacancy     { background:#333333; color:#cccccc; border:1px solid #ffffff33; }
-  .pattern-badge.pat-landlord    { background:#1c4a39; color:#6fd9a9; border:1px solid #6fd9a933; }
+  .pattern-badge.pat-foreclosure { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
+  .pattern-badge.pat-tax         { background:#fffbeb; color:#b45309; border:1px solid #fde68a; }
+  .pattern-badge.pat-estate      { background:#faf5ff; color:#7e22ce; border:1px solid #e9d5ff; }
+  .pattern-badge.pat-legal       { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+  .pattern-badge.pat-vacancy     { background:#f8fafc; color:#475569; border:1px solid #cbd5e1; }
+  .pattern-badge.pat-landlord    { background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }
 
   /* Signal Stack Depth dropdown */
   .stack-select {
@@ -661,7 +679,6 @@
       <div class="kpi"><div class="val" id="kpi-totalall">—</div><div class="lbl">Total Pool</div></div>
       <div class="kpi"><div class="val" id="kpi-total">—</div><div class="lbl">In View</div></div>
       <div class="kpi"><div class="val" id="kpi-new">—</div><div class="lbl">🎯 New</div></div>
-      <div class="kpi"><div class="val" id="kpi-stacked">—</div><div class="lbl">Stacked 2+</div></div>
       <div class="kpi"><div class="val" id="kpi-updated">—</div><div class="lbl">Updated</div></div>
       <div class="kpi live-kpi"><span class="live-dot"></span><span class="live-text">LIVE</span></div>
     </div>
@@ -1892,7 +1909,7 @@ function hideTierTooltip() {
 function renderKPIs() {
   const f = state.filtered;
   $("#kpi-total").textContent = f.length.toLocaleString();
-  $("#kpi-stacked").textContent = f.filter(x => (x.stack_count||0) >= 2).length.toLocaleString();
+  // (Stacked 2+ KPI removed — too broad to be useful)
 
   // Update county tab badge counts (based on unfiltered leads so tabs always show total per county)
   const mAll  = document.getElementById("tab-count-all");
