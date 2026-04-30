@@ -677,7 +677,8 @@
     <div class="ql-tile new-leads" data-ql="new">
       <span class="ql-icon">🎯</span>
       <span class="ql-count" id="ql-count-new">—</span>
-      <span class="ql-label">New Opportunities</span>
+      <span class="ql-label">Today's Pima Picks</span>
+      <span class="ql-sublabel" id="ql-sublabel-new" style="font-size:9px;color:var(--text-dim);margin-top:2px;">Refreshes 3am MST</span>
     </div>
     <div class="ql-tile" data-ql="preforeclosure">
       <span class="ql-icon">🔥</span>
@@ -1249,7 +1250,17 @@ async function loadData() {
     state.totalPool = payload.total_leads || state.leads.length;
     state.generatedAt = payload.generated_at || null;
     state.prevGeneratedAt = payload.previous_generated_at || null;
+    state.rotationDate = payload.daily_rotation_date || null;
     $("#kpi-updated").textContent = (payload.generated_at || "").slice(0,10) || "—";
+    // Update Today's Pima Picks sublabel with the actual rotation date
+    if (state.rotationDate) {
+      const sub = document.getElementById("ql-sublabel-new");
+      if (sub) {
+        const d = new Date(state.rotationDate + "T00:00:00");
+        const opts = { month: "short", day: "numeric" };
+        sub.textContent = `${d.toLocaleDateString("en-US", opts)} · 3am MST refresh`;
+      }
+    }
     $("#kpi-totalall").textContent = state.totalPool.toLocaleString();
     buildSignalChips();
     decorateFilterCounts();

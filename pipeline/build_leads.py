@@ -681,32 +681,100 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
     else:
         log.info("no previous leads.json — all leads are considered seen today")
 
-    # ── Daily rotation seed — "New Opportunities" pool ───────────────────
-    # Surface a fresh ~250 leads each day by seeding the shuffle with today's
-    # date. Top 2,000 high-scoring leads act as the pool we rotate through.
+    # ── Pima Daily Rotation — "New Opportunities" pool ───────────────────
+    # Pima leads only. Rotation rolls over at 3am Phoenix time (MST = UTC-7,
+    # Arizona doesn't observe DST so it's always UTC-7).
+    # 7-day anti-overlap window. ~250 fresh Pima leads each day.
     import random as _random
     import datetime as _dt
-    seed = int(_dt.date.today().strftime("%Y%m%d"))
+    import hashlib as _hashlib
+
+    # Compute "rotation date" = current Phoenix-local date with 3am cutoff
+    # If it's currently 1am Phoenix time, "today's rotation" is still yesterday's
+    PHX_OFFSET = _dt.timedelta(hours=-7)  # MST, no DST
+    now_utc = _dt.datetime.utcnow()
+    phx_now = now_utc + PHX_OFFSET
+    # 3am cutoff: if before 3am Phoenix time, use yesterday's date
+    if phx_now.hour < 3:
+        rotation_date = (phx_now - _dt.timedelta(days=1)).date()
+    else:
+        rotation_date = phx_now.date()
+    rotation_date_iso = rotation_date.isoformat()
+
+    # Load rotation history
+    state_path = DATA_DIR / "_rotation_state.json"
+    rotation_history: dict = {}
+    if state_path.exists():
+        try:
+            rotation_history = json.loads(state_path.read_text())
+        except Exception as e:
+            log.warning(f"couldn't read rotation state: {e}; starting fresh")
+            rotation_history = {}
+
+    # Prune entries older than 7 days
+    cutoff = rotation_date - _dt.timedelta(days=7)
+    rotation_history = {
+        d: keys for d, keys in rotation_history.items()
+        if _dt.date.fromisoformat(d) > cutoff
+    }
+
+    # Build exclusion set from last 7 days
+    excluded_keys: set = set()
+    for keys in rotation_history.values():
+        excluded_keys.update(keys)
+
+    # Strong seed
+    seed_bytes = _hashlib.sha256(f"pima-rotation-{rotation_date_iso}-v3".encode()).digest()
+    seed = int.from_bytes(seed_bytes[:8], "big")
     _rng = _random.Random(seed)
-    pool = leads[:2000]
-    rotation_indexes = list(range(len(pool)))
-    _rng.shuffle(rotation_indexes)
-    daily_rotation_keys = set()
-    for idx in rotation_indexes[:250]:
-        l = pool[idx]
-        daily_rotation_keys.add(f"{l['county']}:{l['apn_norm'] or l['apn']}")
-    # Tag the leads that are in today's rotation
+
+    # PIMA-ONLY POOL: filter to Pima leads first, then take top by stack/score
+    pima_leads = [l for l in leads if l.get("county") == "Pima"]
+    pima_pool = pima_leads[:10000]  # already sorted by stack_count, score
+    pima_pool_keys = [f"Pima:{l['apn_norm'] or l['apn']}" for l in pima_pool]
+
+    log.info(f"Pima rotation pool: {len(pima_pool):,} leads")
+
+    # Filter out keys from the last 7 days
+    eligible_indices = [i for i, k in enumerate(pima_pool_keys) if k not in excluded_keys]
+    log.info(f"  eligible after 7-day exclusion: {len(eligible_indices):,}")
+
+    # Fallback if exclusion too aggressive
+    if len(eligible_indices) < 250 and len(pima_pool) >= 250:
+        log.warning(f"  only {len(eligible_indices)} eligible — falling back to full Pima pool")
+        eligible_indices = list(range(len(pima_pool)))
+    elif len(pima_pool) < 250:
+        log.warning(f"  Pima pool has only {len(pima_pool)} leads (< 250 target)")
+        eligible_indices = list(range(len(pima_pool)))
+
+    _rng.shuffle(eligible_indices)
+    todays_count = min(250, len(eligible_indices))
+    todays_indices = eligible_indices[:todays_count]
+    daily_rotation_keys = {pima_pool_keys[i] for i in todays_indices}
+
+    # Tag the leads that are in today's rotation + add freshness fields
+    rotation_timestamp = now_utc.isoformat() + "Z"
     for l in leads:
         k = f"{l['county']}:{l['apn_norm'] or l['apn']}"
         if k in daily_rotation_keys:
             l["daily_opportunity"] = True
-    log.info(f"daily rotation: {len(daily_rotation_keys)} leads tagged (seed={seed})")
+            l["rotation_added_at"] = rotation_timestamp
+            l["rotation_date"] = rotation_date_iso
+            l["is_fresh_pick"] = True
+
+    log.info(f"Pima daily rotation: {len(daily_rotation_keys)} leads tagged (rotation_date={rotation_date_iso}, 3am PHX cutoff)")
+
+    # Save today's rotation
+    rotation_history[rotation_date_iso] = sorted(daily_rotation_keys)
+    state_path.write_text(json.dumps(rotation_history, indent=2))
 
     out = {
         "generated_at": now_iso,
         "previous_generated_at": prev_generated,
-        "daily_rotation_date": _dt.date.today().isoformat(),
+        "daily_rotation_date": rotation_date_iso,
         "daily_rotation_size": len(daily_rotation_keys),
+        "daily_rotation_county": "Pima",
+        "daily_rotation_timestamp": rotation_timestamp,
         "counties":     ["Maricopa", "Pima"],
         "total_leads":  len(leads),
         "new_since_last_build": new_count_24h,
