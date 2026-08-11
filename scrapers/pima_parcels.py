@@ -36,7 +36,7 @@ CANDIDATE_URLS = [
 
 PAGE_SIZE = 2000
 REQUEST_TIMEOUT = 60
-RETRY_BACKOFF = [2, 5, 15, 45]
+RETRY_BACKOFF = [2, 5, 15, 45, 90, 180, 300]  # rides out multi-minute network blips
 USER_AGENT = "maricopa-pima-intel/1.0 (+real estate intel)"
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "data"

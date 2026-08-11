@@ -36,7 +36,7 @@ PARCELS_URL = (
 # Page size. Maricopa advertises MaxRecordCount: 1000 for these layers.
 PAGE_SIZE = 1000
 REQUEST_TIMEOUT = 60
-RETRY_BACKOFF = [2, 5, 15, 45]  # seconds
+RETRY_BACKOFF = [2, 5, 15, 45, 90, 180, 300]  # seconds — rides out multi-minute network blips
 USER_AGENT = "maricopa-pima-intel/1.0 (+real estate intel)"
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -103,13 +103,15 @@ def iter_all_parcels(
     where: str = "1=1",
     limit: Optional[int] = None,
     url: str = PARCELS_URL,
+    start_offset: int = 0,
 ) -> Iterator[dict]:
-    """Generator: yields every parcel attribute row."""
+    """Generator: yields every parcel attribute row (from start_offset on)."""
     total = count_records(url, where)
     target = min(total, limit) if limit else total
-    print(f"Maricopa: {total:,} parcels match — fetching {target:,}")
-    fetched = 0
-    offset = 0
+    print(f"Maricopa: {total:,} parcels match — fetching {target:,}"
+          + (f" (resuming at {start_offset:,})" if start_offset else ""))
+    fetched = start_offset
+    offset = start_offset
     while fetched < target:
         try:
             batch = fetch_page(url, where, offset)
@@ -189,6 +191,8 @@ def main():
     ap.add_argument("--where", default="1=1", help="ArcGIS where clause")
     ap.add_argument("--limit", type=int, default=None, help="Stop after N records (testing)")
     ap.add_argument("--url", default=PARCELS_URL, help="Override endpoint URL")
+    ap.add_argument("--resume", action="store_true",
+                    help="Continue an interrupted pull from the last full page in the jsonl")
     args = ap.parse_args()
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -198,17 +202,39 @@ def main():
     if fields:
         print(f"Fields exposed: {len(fields)} — sampling 10: {fields[:10]}")
 
-    count = 0
-    with OUT_JSONL.open("w", encoding="utf-8") as jf, OUT_CSV.open("w", newline="", encoding="utf-8") as cf:
-        writer: Optional[csv.DictWriter] = None
-        csv_fields = UNIFIED_FIELDS + ["absentee", "out_of_state", "apn_norm"]
-        writer = csv.DictWriter(cf, fieldnames=csv_fields, extrasaction="ignore")
-        writer.writeheader()
-        for raw in iter_all_parcels(args.where, args.limit, args.url):
+    # Resume: keep whole pages already on disk, drop any partial trailing page
+    # (page-aligned offsets), and append from there.
+    start_offset = 0
+    mode = "w"
+    if args.resume and OUT_JSONL.exists():
+        with OUT_JSONL.open("rb") as f:
+            existing = sum(1 for _ in f)
+        start_offset = (existing // PAGE_SIZE) * PAGE_SIZE
+        if existing != start_offset:
+            pos = 0
+            with OUT_JSONL.open("rb") as f:
+                for _ in range(start_offset):
+                    pos += len(f.readline())
+            with OUT_JSONL.open("rb+") as f:
+                f.truncate(pos)
+        mode = "a"
+        print(f"Resuming: {existing:,} rows on disk -> continuing at offset {start_offset:,}")
+
+    count = start_offset
+    with OUT_JSONL.open(mode, encoding="utf-8") as jf:
+        for raw in iter_all_parcels(args.where, args.limit, args.url, start_offset):
             rec = normalize(raw)
             jf.write(json.dumps(rec, default=str) + "\n")
-            writer.writerow(rec)
             count += 1
+
+    # CSV mirrors the jsonl; rebuilding it wholesale is resume-safe and cheap
+    csv_fields = UNIFIED_FIELDS + ["absentee", "out_of_state", "apn_norm"]
+    with OUT_JSONL.open(encoding="utf-8") as jf, \
+         OUT_CSV.open("w", newline="", encoding="utf-8") as cf:
+        writer = csv.DictWriter(cf, fieldnames=csv_fields, extrasaction="ignore")
+        writer.writeheader()
+        for line in jf:
+            writer.writerow(json.loads(line))
 
     print(f"\nDone. Wrote {count:,} records to:")
     print(f"  {OUT_JSONL}")
