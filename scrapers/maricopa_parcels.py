@@ -234,7 +234,10 @@ def main():
         writer = csv.DictWriter(cf, fieldnames=csv_fields, extrasaction="ignore")
         writer.writeheader()
         for line in jf:
-            writer.writerow(json.loads(line))
+            try:
+                writer.writerow(json.loads(line))
+            except json.JSONDecodeError:
+                print("  skipping corrupt jsonl line in CSV rebuild", file=sys.stderr)
 
     print(f"\nDone. Wrote {count:,} records to:")
     print(f"  {OUT_JSONL}")
