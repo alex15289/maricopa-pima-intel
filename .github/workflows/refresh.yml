@@ -1,28 +1,30 @@
-name: Refresh intel data
+name: Daily Refresh — parcels, signals, leads
 
-# Disabled by default — enable by uncommenting the schedule triggers below,
-# or trigger manually from the Actions tab (workflow_dispatch).
+# Daily at 11:00 UTC = 4:00am Phoenix (MST year-round, Arizona has no DST).
+# The parcel jsonls are gitignored, so every run pulls the full parcel masters
+# from the public ArcGIS endpoints (works headless, ~15-25 min).
+#
+# Recorder signals come from the Maricopa Recorder REST API (no browser).
+# The Playwright portal scrapers (maricopa_recorder.py / pima_recorder.py) are
+# NOT run here: the Pima recorder portal sits behind the Tyler WAF and blocks
+# GitHub Actions runners. Recorder steps are fail-soft — a signal outage must
+# never block the daily rotation refresh.
 on:
   workflow_dispatch:
     inputs:
       days:
-        description: "Signal window (days)"
+        description: "Recorder signal window (days)"
         required: false
         default: "30"
-      skip_parcels:
-        description: "Skip full parcel master pull"
-        required: false
-        default: "false"
-        type: choice
-        options: ["false", "true"]
-
-  # Uncomment these to auto-refresh:
-  # schedule:
-  #   - cron: '0 8 * * *'       # daily 08:00 UTC — recorder signals only (set SKIP_PARCELS)
-  #   - cron: '0 10 1 * *'      # monthly 10:00 UTC 1st of month — full refresh including parcels
+  schedule:
+    - cron: "0 11 * * *"
 
 permissions:
   contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
 
 jobs:
   refresh:
@@ -31,6 +33,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -42,19 +46,49 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Playwright browser
-        run: python -m playwright install --with-deps chromium
+      - name: Pull Maricopa parcel master (ArcGIS)
+        run: PYTHONPATH=. python scrapers/maricopa_parcels.py
 
-      - name: Run refresh
-        env:
-          DAYS: ${{ github.event.inputs.days || '30' }}
-          SKIP_PARCELS: ${{ github.event.inputs.skip_parcels == 'true' && '1' || '0' }}
-        run: ./run.sh
+      - name: Pull Pima parcel master (ArcGIS)
+        run: PYTHONPATH=. python scrapers/pima_parcels.py
 
-      - name: Commit updated data
+      - name: Maricopa recorder signals (REST API, fail-soft)
+        continue-on-error: true
+        run: PYTHONPATH=. python scrapers/maricopa_recorder_api.py --days "${{ github.event.inputs.days || '30' }}"
+
+      - name: Match recorder names to parcel APNs (fail-soft)
+        continue-on-error: true
         run: |
-          git config user.name  "intel-bot"
-          git config user.email "[email protected]"
-          git add data/leads.json data/export_skiptrace.csv data/export_ghl.csv
-          git diff --cached --quiet || git commit -m "chore: refresh intel data [skip ci]"
-          git push
+          if [ -f data/maricopa_recorder_raw.jsonl ]; then
+            PYTHONPATH=. python pipeline/match_recorder.py
+          else
+            echo "no recorder raw file — skipping match step"
+          fi
+
+      - name: Build leads.json (scoring, tiers, daily rotation)
+        run: PYTHONPATH=. python pipeline/build_leads.py
+
+      - name: Sanity check — refuse to commit a gutted dashboard
+        run: |
+          python - <<'EOF'
+          import json, sys
+          d = json.load(open("data/leads.json"))
+          total = d.get("total_leads", 0)
+          shipped = len(d.get("leads", []))
+          print(f"total_leads={total}  shipped={shipped}  rotation={d.get('daily_rotation_size')}")
+          if total < 100_000 or shipped < 10_000:
+              sys.exit("lead pool suspiciously small — parcel pull likely failed; refusing to commit")
+          EOF
+
+      - name: Commit refreshed data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/leads.json data/_rotation_state.json
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: daily refresh $(date -u +%Y-%m-%d)"
+            git pull --rebase origin main
+            git push
+          fi

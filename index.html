@@ -949,13 +949,6 @@
         <input type="file" id="file-input" accept=".csv,.tsv,text/csv" />
       </div>
 
-      <div style="margin:12px 0 0; padding:10px 14px; background:var(--bg-elev); border-left:3px solid var(--accent); border-radius:3px; font-size:11px; color:var(--text-muted); line-height:1.5;">
-        <strong style="color:var(--accent)">Pima Recorder scrape?</strong>
-        For fresh Pima Recorder data (NOTS, Lis Pendens, Judgments, AHCCCS, City Lien, Sheriff's Deed),
-        use the CLI pipeline instead — it handles the full XLSX/CSV format from the scraper and
-        writes directly to the signals pipeline. See <code>PIMA_RECORDER_SETUP.md</code> in the repo.
-      </div>
-
       <div class="mapping" id="mapping">
         <h3>Column Mapping</h3>
         <div style="font-size:11px; color:var(--text-muted); margin-bottom:12px">
@@ -1116,6 +1109,38 @@ const FLAG_LABELS = {
   // Enrichment — velocity
   never_sold:                "Never sold (generational / inherited)",
   recent_underprice_sale:    "Recent below-market sale (distressed)",
+};
+
+// Call-angle copy — leads.json ships only the tag; headline/pitch live here
+const CALL_ANGLE_COPY = {
+  "pre-foreclosure": { headline: "🔥 Pre-Foreclosure — auction in ~90 days",
+    pitch: "You can buy before it hits their credit. Fast cash close, no showings, walk-away money." },
+  "estate":          { headline: "👑 Estate / Probate filing",
+    pitch: "Inherited property — pitch buying as-is so the heirs settle the estate without cleanup, repairs, or showings." },
+  "tax-lien":        { headline: "💰 Tax Lien — owner behind",
+    pitch: "Cash offer covers the lien and leaves them walk-away money. Works for retired fixed-income owners especially." },
+  "lis-pendens":     { headline: "⚖️ Lawsuit pending on title",
+    pitch: "Title issue is delaying sale. You bring a buyer who can clear through closing escrow." },
+  "judgment":        { headline: "⚖️ Judgment against owner",
+    pitch: "Selling the property clears the judgment. Cash close + lien payoff = exit strategy." },
+  "violation":       { headline: "🏚️ Code violation on file",
+    pitch: "Owner avoiding city fines. Pitch: we buy as-is, handle the violations, you walk away clean." },
+  "tired-landlord":  { headline: "🏢 Tired Landlord — long-held rental",
+    pitch: "Done with tenants? Cash offer, 14-day close, no showings, no repairs, no tenant stress." },
+  "oos-equity":      { headline: "📍 Out-of-State Owner — big equity",
+    pitch: "Remote ownership + stacking equity. Pitch: cash out without the cross-country hassle." },
+  "estate-owner":    { headline: "📜 Estate-owned",
+    pitch: "Owner listed as 'ESTATE OF' — usually means family dispute or administrator burnout. Offer simplicity." },
+  "multi-heir":      { headline: "👥 Inherited by multiple heirs",
+    pitch: "Joint ownership complicates sale; pitch a clean single-buyer cash offer, they split cleanly at close." },
+  "corp-dissolved":  { headline: "🏚️ LLC dissolved but still owns",
+    pitch: "Abandoned asset. Track down managers and offer cash exit — they often forgot they own it." },
+  "absentee":        { headline: "📬 Absentee owner",
+    pitch: "Mailing address ≠ site. Pitch: stop dealing with it remotely — cash out, we handle everything." },
+  "high-equity":     { headline: "💎 Deep equity, long hold",
+    pitch: "Tap equity without listing. Clean all-cash offer, two-week close." },
+  "generic":         { headline: "📞 Qualified prospect",
+    pitch: "Use the flags and signals on this lead to tailor your opener." },
 };
 
 // Score tier system — maps raw scores to plain-English labels
@@ -1939,7 +1964,10 @@ function renderDetail() {
     el.innerHTML = '<div class="empty-detail">Select a lead to view details and run deal math</div>';
     return;
   }
-  const ca = l.call_angle || null;
+  // call_angle is a tag string in current data; older files shipped the full object
+  const ca = typeof l.call_angle === "string"
+    ? { ...(CALL_ANGLE_COPY[l.call_angle] || CALL_ANGLE_COPY.generic), tag: l.call_angle }
+    : (l.call_angle || null);
   const combosHit = l.combos || [];
   const newFlag = isNewLead(l);
   el.innerHTML = `

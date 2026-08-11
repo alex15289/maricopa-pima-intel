@@ -322,7 +322,7 @@ def _compose_call_angle(legacy_flags: dict, enrichment_flags: dict,
 # -----------------------------------------------------------------------------
 # Main pipeline
 # -----------------------------------------------------------------------------
-def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
+def build(min_score: int = 30, limit_dashboard: int = 40_000) -> dict:
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -401,6 +401,7 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
         # Run enrichment (22 new flags + property type)
         counts = owner_counts_maricopa if county == "Maricopa" else owner_counts_pima
         enrichment = enrich_lead(p, counts, now)
+        prop_type = enrichment["property_type"]
 
         # Compute legacy flags
         legacy_flags = {}
@@ -594,14 +595,9 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
 
         # Only residential property types by default (can be overridden via dashboard)
         # but include commercial if it has signals or very high scores
-        prop_type = enrichment["property_type"]
         is_resi = PROPERTY_TYPES.get(prop_type, {}).get("residential", False)
         if not is_resi and not parcel_signals and total_score < 60:
             continue  # drop low-scoring commercial noise
-
-        # ── First-seen timestamp: preserve previous value if lead existed before ─
-        lead_key = f"{county}:{p.get('apn_norm') or p.get('apn')}"
-        first_seen_at = prev_first_seen.get(lead_key, now_iso)
 
         # ── Call-script angle: short pitch reason based on top distress markers ─
         call_angle = _compose_call_angle(legacy_flags, enrichment["enrichment_flags"],
@@ -620,18 +616,14 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
             "mail_city":        p.get("mail_city"),
             "mail_state":       p.get("mail_state"),
             "mail_zip":         p.get("mail_zip"),
-            "use_code":         p.get("use_code"),
             "use_desc":         p.get("use_desc"),
             "property_type":    prop_type,
             "year_built":       p.get("year_built"),
             "living_sqft":      p.get("living_sqft"),
             "lot_sqft":         p.get("lot_sqft"),
             "fcv":              p.get("fcv"),
-            "lpv":              p.get("lpv"),
             "last_sale_date":   p.get("last_sale_date"),
             "last_sale_price":  p.get("last_sale_price"),
-            "latitude":         p.get("latitude"),
-            "longitude":        p.get("longitude"),
             "equity_est":       int(equity),
             # Flags
             "legacy_flags":     legacy_flags,
@@ -644,20 +636,13 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
             # Signals
             "signals":          signal_entries,
             "signal_count":     len(signal_entries),
-            # Scoring breakdown
             "score":            int(total_score),
-            "score_parts": {
-                "signals":    int(signal_score),
-                "legacy":     int(legacy_score),
-                "enrichment": int(enrichment_score),
-                "equity":     int(eq_bonus),
-                "combos":     int(combo_score),
-            },
-            # Recency tracking
-            "first_seen_at":    first_seen_at,
-            # Wholesaler copy
-            "call_angle":       call_angle,
+            # Wholesaler copy — tag only; the dashboard maps tag -> headline/pitch
+            "call_angle":       call_angle["tag"],
         }
+        # Strip null/empty fields — the dashboard tolerates missing keys, and
+        # dropping them keeps leads.json under GitHub's 50 MB warning line
+        lead = {k: v for k, v in lead.items() if v not in (None, "", [], {})}
         leads.append(lead)
 
     # Sort: stack_count DESC, then score DESC — patterns stacked beat raw score
@@ -691,9 +676,9 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
 
     # Compute "rotation date" = current Phoenix-local date with 3am cutoff
     # If it's currently 1am Phoenix time, "today's rotation" is still yesterday's
-    PHX_OFFSET = _dt.timedelta(hours=-7)  # MST, no DST
-    now_utc = _dt.datetime.utcnow()
-    phx_now = now_utc + PHX_OFFSET
+    PHX_TZ = _dt.timezone(_dt.timedelta(hours=-7))  # MST, no DST
+    now_utc = _dt.datetime.now(_dt.timezone.utc)
+    phx_now = now_utc.astimezone(PHX_TZ)
     # 3am cutoff: if before 3am Phoenix time, use yesterday's date
     if phx_now.hour < 3:
         rotation_date = (phx_now - _dt.timedelta(days=1)).date()
@@ -752,21 +737,24 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
     todays_indices = eligible_indices[:todays_count]
     daily_rotation_keys = {pima_pool_keys[i] for i in todays_indices}
 
-    # Tag the leads that are in today's rotation + add freshness fields
-    rotation_timestamp = now_utc.isoformat() + "Z"
+    # Tag the leads that are in today's rotation
+    rotation_timestamp = now_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
     for l in leads:
-        k = f"{l['county']}:{l['apn_norm'] or l['apn']}"
+        k = f"{l['county']}:{l.get('apn_norm') or l.get('apn')}"
         if k in daily_rotation_keys:
             l["daily_opportunity"] = True
-            l["rotation_added_at"] = rotation_timestamp
-            l["rotation_date"] = rotation_date_iso
-            l["is_fresh_pick"] = True
 
     log.info(f"Pima daily rotation: {len(daily_rotation_keys)} leads tagged (rotation_date={rotation_date_iso}, 3am PHX cutoff)")
 
     # Save today's rotation
     rotation_history[rotation_date_iso] = sorted(daily_rotation_keys)
     state_path.write_text(json.dumps(rotation_history, indent=2))
+
+    # Dashboard file = top N by stack/score, plus any of today's rotation picks
+    # that fall outside the cap (they must be visible for the daily list to work)
+    dashboard_leads = leads[:limit_dashboard] + [
+        l for l in leads[limit_dashboard:] if l.get("daily_opportunity")
+    ]
 
     out = {
         "generated_at": now_iso,
@@ -779,14 +767,12 @@ def build(min_score: int = 30, limit_dashboard: int = 50_000) -> dict:
         "total_leads":  len(leads),
         "new_since_last_build": new_count_24h,
         "unresolved_signals": unresolved,
-        "property_types": PROPERTY_TYPES,
-        "flag_weights": {**LEGACY_FLAG_WEIGHTS, **ENRICHMENT_WEIGHTS, **SIGNAL_WEIGHTS},
-        "leads":        leads[:limit_dashboard],
+        "leads":        dashboard_leads,
     }
 
     out_path = DATA_DIR / "leads.json"
     out_path.write_text(json.dumps(out, default=str))
-    log.info(f"wrote -> {out_path}  ({len(leads[:limit_dashboard]):,} leads in dashboard file)")
+    log.info(f"wrote -> {out_path}  ({len(dashboard_leads):,} leads in dashboard file)")
     return out
 
 

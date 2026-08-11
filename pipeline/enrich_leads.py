@@ -17,7 +17,7 @@ for filter chips on the dashboard.
 
 import re
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict
 
 
@@ -445,5 +445,5 @@ if __name__ == "__main__":
     }
     # Fake owner index
     counts = {"SMITH JOHN & MARY H": 1}
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     print(json.dumps(enrich_lead(sample, counts, now), indent=2))

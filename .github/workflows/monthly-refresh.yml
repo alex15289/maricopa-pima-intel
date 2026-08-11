@@ -9,9 +9,12 @@ name: Monthly Refresh — All Signals
 #   3. Enrich Pima tax-delinquent signals (requires data/pima_tax_delinquent.xlsx)
 #   4. Rebuild leads.json with all signals + daily rotation
 #   5. Commit and push
+# SCHEDULE DISABLED — superseded by refresh.yml (daily full refresh).
+# WARNING: this job runs build_leads.py WITHOUT pulling the parcel masters
+# (data/*.jsonl are gitignored, so the runner has none). That produces an
+# empty lead pool and would overwrite the live dashboard if committed.
+# Do not re-enable the cron without adding parcel pulls + a sanity guard.
 on:
-  schedule:
-    - cron: "0 9 1 * *"    # 1st of month, 9am UTC
   workflow_dispatch:        # manual trigger button
 
 jobs:

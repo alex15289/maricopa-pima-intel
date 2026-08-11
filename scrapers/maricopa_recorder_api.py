@@ -56,7 +56,7 @@ import logging
 import sys
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -328,7 +328,7 @@ def build_record(raw: dict, code: str, names: list[str]) -> dict:
         "recording_suffix": raw.get("recordingSuffix") or "",
         "recorded_date":    parse_recording_date(raw.get("recordingDate")),
         "names":            names,       # filled in by match_recorder.py
-        "fetched_at":       datetime.utcnow().isoformat() + "Z",
+        "fetched_at":       datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
     }
 
 

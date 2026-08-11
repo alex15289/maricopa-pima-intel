@@ -109,7 +109,7 @@ python pipeline/export_csv.py --min-score 80 --county Maricopa
 3. The dashboard goes live at `https://<user>.github.io/<repo>/`.
 4. Refresh the dataset: run `./run.sh` locally, then commit `data/leads.json`. Next push updates the live dashboard.
 
-**Automated refresh (optional):** `.github/workflows/refresh.yml` is included but disabled by default. Enable it in GitHub Actions to have the pipeline run on schedule (weekly parcel master, daily recorder signals). It commits the updated `data/` folder back to `main`.
+**Automated refresh:** `.github/workflows/refresh.yml` runs daily at 11:00 UTC (4am Phoenix — MST year-round, no DST). Each run pulls both parcel masters from ArcGIS, fetches Maricopa recorder signals via the REST API (fail-soft — the Playwright portal scrapers are not used on Actions runners; the Pima recorder portal blocks them), rebuilds `data/leads.json` with the daily Pima rotation, and commits `data/leads.json` + `data/_rotation_state.json` back to `main` (skipped when nothing changed). A sanity guard refuses to commit if the lead pool looks gutted. `weekly-refresh.yml` and `monthly-refresh.yml` are manual-dispatch only (superseded).
 
 ---
 
@@ -142,7 +142,7 @@ Pass `--days N` to either recorder scraper. Default 30. Maricopa's online record
 │   ├── build_leads.py         # Normalize + stack + score
 │   └── export_csv.py          # Skip Trace + GHL formats
 ├── .github/workflows/
-│   └── refresh.yml            # Scheduled automation (disabled by default)
+│   └── refresh.yml            # Daily automated refresh (4am Phoenix)
 ├── requirements.txt
 ├── run.sh                     # One-shot full refresh
 ├── .gitignore

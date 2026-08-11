@@ -31,7 +31,7 @@ import json
 import logging
 import re
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -212,7 +212,7 @@ def normalize_row(raw: dict, doc_code: str) -> dict:
         "apns_found":    extract_apns(text),
         "doc_url":       raw.get("__doc_url"),
         "raw_text":      text,
-        "scraped_at":    datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "scraped_at":    datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
     }
 
 

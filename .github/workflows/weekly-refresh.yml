@@ -1,12 +1,12 @@
 name: Weekly Refresh — Maricopa Recorder Signals
 
-# Sunday 3am CST = Sunday 09:00 UTC (during CST, Nov–Mar).
-# During CDT (Mar–Nov) it'll run at 2am local. Close enough to 3am ±1hr
-# and not worth the complexity of a DST-aware schedule.
+# SCHEDULE DISABLED — superseded by refresh.yml (daily full refresh).
+# WARNING: this job runs build_leads.py WITHOUT pulling the parcel masters
+# (data/*.jsonl are gitignored, so the runner has none). That produces an
+# empty lead pool and would overwrite the live dashboard if committed.
+# Do not re-enable the cron without adding parcel pulls + a sanity guard.
 on:
-  schedule:
-    - cron: "0 9 * * 0"
-  workflow_dispatch:   # allow manual triggering
+  workflow_dispatch:   # manual triggering only
 
 jobs:
   refresh:
