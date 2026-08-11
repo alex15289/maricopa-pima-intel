@@ -32,11 +32,6 @@ PARCELS_URL = (
     "https://gis.mcassessor.maricopa.gov/arcgis/rest/services/"
     "Parcels/MapServer/0/query"
 )
-# Fallback: the leaner Parcels/MapServer/0 endpoint if the Dynamic one is down.
-PARCELS_URL_FALLBACK = (
-    "https://gis.mcassessor.maricopa.gov/arcgis/rest/services/"
-    "Parcels/MapServer/0/query"
-)
 
 # Page size. Maricopa advertises MaxRecordCount: 1000 for these layers.
 PAGE_SIZE = 1000
@@ -119,8 +114,8 @@ def iter_all_parcels(
         try:
             batch = fetch_page(url, where, offset)
         except Exception as e:
-            print(f"  page {offset} failed: {e} — trying fallback endpoint", file=sys.stderr)
-            batch = fetch_page(PARCELS_URL_FALLBACK, where, offset)
+            print(f"  page {offset} failed: {e} — one more attempt", file=sys.stderr)
+            batch = fetch_page(url, where, offset)
         if not batch:
             break
         for row in batch:

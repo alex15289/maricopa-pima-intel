@@ -406,21 +406,6 @@
   .pattern-badge.pat-vacancy     { background:rgba(148,163,184,0.12); color:#cbd5e1; border:1px solid rgba(148,163,184,0.4); }
   .pattern-badge.pat-landlord    { background:rgba(16,185,129,0.12); color:#6ee7b7; border:1px solid rgba(16,185,129,0.4); }
 
-  /* Signal Stack Depth dropdown */
-  .stack-select {
-    width:100%; padding:8px 12px; background:var(--bg-elev); color:var(--text);
-    border:1px solid var(--border); border-radius:4px;
-    font-family:"JetBrains Mono",monospace; font-size:11.5px; letter-spacing:0.02em;
-    cursor:pointer;
-    -webkit-appearance:none; -moz-appearance:none; appearance:none;
-    background-image:linear-gradient(45deg, transparent 50%, var(--accent) 50%),
-                     linear-gradient(135deg, var(--accent) 50%, transparent 50%);
-    background-position:calc(100% - 14px) 50%, calc(100% - 8px) 50%;
-    background-size:6px 6px, 6px 6px;
-    background-repeat:no-repeat;
-  }
-  .stack-select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
-  .stack-select option { background:var(--bg-panel); color:var(--text); }
   @keyframes newpulse { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
 
   /* NEW badge on leads */
@@ -784,17 +769,6 @@
       </div>
 
       <div class="filter-group">
-        <h3>Signal Stack Depth</h3>
-        <select id="f-stack-depth" class="stack-select">
-          <option value="0">Any (no minimum)</option>
-          <option value="2">2+ stacked signals</option>
-          <option value="3">3+ stacked signals</option>
-          <option value="4">4+ stacked signals</option>
-          <option value="5">5+ stacked signals</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
         <h3>Core Flags</h3>
         <div class="chip-row" id="f-flags">
           <span class="chip" data-val="absentee">Absentee</span>
@@ -1024,7 +998,6 @@ const state = {
     activeTab:    "all",  // "all" | "Maricopa" | "Pima"
     quickList:    "all",  // "all" | "new" | "preforeclosure" | ...
     intent:       new Set(),   // "foreclosure_risk" | "lawsuit_risk" | "lien_pressure"
-    stackDepth:   0,     // 0 = any; 2/3/4/5 = min signal count
     signals:      new Set(),
     flags:        new Set(),
     propertyTypes: new Set(),
@@ -1494,14 +1467,6 @@ bindChipGroup("#f-holding",   "holding");
 bindChipGroup("#f-value",     "valuePlay");
 bindChipGroup("#f-portfolio", "portfolio");
 bindChipGroup("#f-velocity",  "velocity");
-// Signal stack depth dropdown
-const stackSel = document.getElementById("f-stack-depth");
-if (stackSel) {
-  stackSel.addEventListener("change", e => {
-    state.filters.stackDepth = +e.target.value || 0;
-    applyFilters();
-  });
-}
 // Min Tier chip buttons — single-select (radio-style)
 $$("#f-tier .chip").forEach(el => {
   el.addEventListener("click", () => {
@@ -1609,9 +1574,6 @@ function matches(lead) {
   if (f.flags.has("likely_foreclosure") && !lf.likely_foreclosure) return false;
   if (f.flags.has("long_hold")     && !lf.long_hold)     return false;
   if (f.flags.has("hide_cash_buyer") && lf.entity_owner) return false;
-
-  // Signal stack depth (dropdown) — minimum number of signals stacked
-  if (f.stackDepth > 0 && (lead.stack_count || 0) < f.stackDepth) return false;
 
   // All category chip groups — require ALL selected chips in each group to fire
   const checkGroup = (group) => {
@@ -2019,7 +1981,6 @@ function renderDetail() {
         <span class="k">Year built</span><span class="v">${l.year_built||"—"}</span>
         <span class="k">Living sqft</span><span class="v">${fmt(l.living_sqft)}</span>
         <span class="k">Lot sqft</span><span class="v">${fmt(l.lot_sqft)}</span>
-        <span class="k">Beds / Baths</span><span class="v">${l.bedrooms||"—"} / ${l.bathrooms||"—"}</span>
         <span class="k">FCV</span><span class="v">${fmtM(l.fcv)}</span>
         <span class="k">Last sale</span><span class="v">${l.last_sale_date||"—"} · ${fmtM(l.last_sale_price)}</span>
         <span class="k">Equity est.</span><span class="v" style="color:var(--ok)">${fmtM(l.equity_est)}</span>
@@ -2033,8 +1994,8 @@ function renderDetail() {
         ${l.owner_2 ? `<span class="k">Co-owner</span><span class="v">${l.owner_2}</span>` : ""}
         <span class="k">Mailing</span><span class="v">${l.mail_address||"—"}</span>
         <span class="k">City/State</span><span class="v">${l.mail_city||""} ${l.mail_state||""} ${l.mail_zip||""}</span>
-        ${l.absentee ? '<span class="k">Flag</span><span class="v" style="color:var(--warn)">Absentee</span>' : ""}
-        ${l.out_of_state ? '<span class="k">Flag</span><span class="v" style="color:var(--warn)">Out of state</span>' : ""}
+        ${(l.legacy_flags||{}).absentee ? '<span class="k">Flag</span><span class="v" style="color:var(--warn)">Absentee</span>' : ""}
+        ${(l.legacy_flags||{}).out_of_state ? '<span class="k">Flag</span><span class="v" style="color:var(--warn)">Out of state</span>' : ""}
       </div>
     </div>
 
@@ -2369,8 +2330,8 @@ $("#btn-ghl").addEventListener("click", () => {
     { label: "Source",           get: _ => "Maricopa/Pima Intel" },
     { label: "Tags",             get: l => {
       const t = [l.county, ...(l.signals||[]).map(s=>s.type)];
-      if (l.absentee) t.push("Absentee");
-      if (l.out_of_state) t.push("Out of State");
+      if ((l.legacy_flags||{}).absentee) t.push("Absentee");
+      if ((l.legacy_flags||{}).out_of_state) t.push("Out of State");
       return t.filter(Boolean).join(", ");
     }},
     { label: "APN",              get: l => l.apn || "" },
@@ -2660,13 +2621,28 @@ $("#upload-merge").addEventListener("click", () => {
           amount_owed: r.amount_owed || 0,
         });
         lead.signal_count = lead.signals.length;
-        lead.score = (lead.score || 0) + 40;  // Tax Delinquent base weight
-        if (lead.signal_count >= 2) lead.score += 10;  // stack bonus
+        // Mirror backend scoring: SIGNAL_WEIGHTS["Tax Delinquent"]=30,
+        // STACK_BONUS=25 per additional signal on the same APN
+        lead.score = (lead.score || 0) + 30;
+        if (lead.signal_count >= 2) lead.score += 25;
+        // Recompute patterns/stack/tier so the import can move tiers —
+        // Tax Delinquent fires the "Tax Pressure" pattern (backend parity)
+        lead.patterns = lead.patterns || [];
+        if (!lead.patterns.includes("Tax Pressure")) lead.patterns.push("Tax Pressure");
+        lead.stack_count = lead.patterns.length;
+        lead.tier = lead.stack_count >= 4 ? "hot"
+                  : lead.stack_count === 3 ? "strong"
+                  : lead.stack_count === 2 ? "likely"
+                  : lead.stack_count === 1 ? "watch" : "cold";
         hits++;
       }
     }
   }
   alert(`Merged ${hits} tax delinquent signals into existing leads.\n\n${rows.length - hits} rows had APNs not in the current parcel master (probably parcels outside Maricopa/Pima, or APNs in a format we didn't recognize).`);
+  // Tiers/patterns may have changed — rebuild the derived UI, not just the table
+  buildSignalChips();
+  decorateFilterCounts();
+  computeQuickListCounts();
   applyFilters();
   $("#upload-modal").classList.remove("open");
 });

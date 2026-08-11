@@ -102,8 +102,9 @@ def export_ghl(leads: list, out: Path):
         for lead in leads:
             first, last = split_owner(lead.get("owner"))
             tags = [lead.get("county"), *sorted({s.get("type", "") for s in lead.get("signals", [])})]
-            if lead.get("absentee"):     tags.append("Absentee")
-            if lead.get("out_of_state"): tags.append("Out of State")
+            legacy = lead.get("legacy_flags") or {}
+            if legacy.get("absentee"):     tags.append("Absentee")
+            if legacy.get("out_of_state"): tags.append("Out of State")
             w.writerow({
                 "First Name":      first,
                 "Last Name":       last,
