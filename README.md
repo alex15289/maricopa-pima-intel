@@ -109,7 +109,7 @@ python pipeline/export_csv.py --min-score 80 --county Maricopa
 3. The dashboard goes live at `https://<user>.github.io/<repo>/`.
 4. Refresh the dataset: run `./run.sh` locally, then commit `data/leads.json`. Next push updates the live dashboard.
 
-**Automated refresh:** `.github/workflows/refresh.yml` runs daily at 11:00 UTC (4am Phoenix — MST year-round, no DST). Each run pulls both parcel masters from ArcGIS, fetches Maricopa recorder signals via the REST API (fail-soft — the Playwright portal scrapers are not used on Actions runners; the Pima recorder portal blocks them), rebuilds `data/leads.json` with the daily Pima rotation, and commits `data/leads.json` + `data/_rotation_state.json` back to `main` (skipped when nothing changed). A sanity guard refuses to commit if the lead pool looks gutted. `weekly-refresh.yml` and `monthly-refresh.yml` are manual-dispatch only (superseded).
+**Automated refresh:** `.github/workflows/refresh.yml` runs daily at 11:00 UTC (4am Phoenix — MST year-round, no DST). Parcel masters come from a weekly `actions/cache` entry; the first run of each ISO week re-pulls them from ArcGIS (multi-hour), other days finish in ~10 minutes. Each run fetches Maricopa recorder signals via the REST API (fail-soft — the Playwright portal scrapers are not used on Actions runners; the Pima recorder portal blocks them), rebuilds `data/leads.json` with the daily Pima rotation, and commits `data/leads.json` + `data/_rotation_state.json` back to `main` (skipped when nothing changed). A sanity guard refuses to commit if the lead pool looks gutted. `weekly-refresh.yml` and `monthly-refresh.yml` are manual-dispatch only (superseded).
 
 ---
 

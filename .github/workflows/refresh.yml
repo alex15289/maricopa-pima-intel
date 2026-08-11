@@ -1,8 +1,11 @@
 name: Daily Refresh — parcels, signals, leads
 
 # Daily at 11:00 UTC = 4:00am Phoenix (MST year-round, Arizona has no DST).
-# The parcel jsonls are gitignored, so every run pulls the full parcel masters
-# from the public ArcGIS endpoints (works headless, ~15-25 min).
+# The parcel jsonls are gitignored, so the runner gets them from a weekly
+# actions/cache entry; on cache miss (first run of each ISO week) it pulls the
+# full parcel masters from the public ArcGIS endpoints — that pull takes
+# multiple hours (~1.6M Maricopa parcels at ~1K/page), hence the long
+# timeouts. Cache-hit days finish in ~10 minutes.
 #
 # Recorder signals come from the Maricopa Recorder REST API (no browser).
 # The Playwright portal scrapers (maricopa_recorder.py / pima_recorder.py) are
@@ -29,7 +32,9 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 350
+    env:
+      PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,10 +51,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Compute parcel-cache week key
+        id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore weekly parcel master cache
+        id: cache-parcels
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/maricopa_parcels.jsonl
+            data/pima_parcels.jsonl
+          key: parcels-v1-${{ steps.week.outputs.week }}
+
       - name: Pull Maricopa parcel master (ArcGIS)
+        if: steps.cache-parcels.outputs.cache-hit != 'true'
+        timeout-minutes: 240
         run: PYTHONPATH=. python scrapers/maricopa_parcels.py
 
       - name: Pull Pima parcel master (ArcGIS)
+        if: steps.cache-parcels.outputs.cache-hit != 'true'
+        timeout-minutes: 90
         run: PYTHONPATH=. python scrapers/pima_parcels.py
 
       - name: Maricopa recorder signals (REST API, fail-soft)
