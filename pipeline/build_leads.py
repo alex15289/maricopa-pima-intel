@@ -703,10 +703,13 @@ def build(min_score: int = 30, limit_dashboard: int = 40_000) -> dict:
         if _dt.date.fromisoformat(d) > cutoff
     }
 
-    # Build exclusion set from last 7 days
+    # Build exclusion set from the last 7 days — skipping today's own entry,
+    # so re-running the build within the same rotation day reproduces the
+    # same picks (deterministic seed) instead of rotating a second time
     excluded_keys: set = set()
-    for keys in rotation_history.values():
-        excluded_keys.update(keys)
+    for d, keys in rotation_history.items():
+        if d != rotation_date_iso:
+            excluded_keys.update(keys)
 
     # Strong seed
     seed_bytes = _hashlib.sha256(f"pima-rotation-{rotation_date_iso}-v3".encode()).digest()

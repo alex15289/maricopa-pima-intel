@@ -15,6 +15,7 @@ Usage:
 import argparse
 import csv
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -24,15 +25,13 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 CANDIDATE_URLS = [
+    # LandRecords layer 12 "Parcels - Regional" is the attribute-rich layer:
+    # PARCEL + MAIL1-5 owner/mailing block + ADDRESS_OL + PARCEL_USE + FCV.
+    # Layers 0/1/2 are geometry-only (centroids/access/lines) — never usable.
+    "https://gisdata.pima.gov/arcgis1/rest/services/GISOpenData/LandRecords/MapServer/12",
+    "https://gisdata.pima.gov/arcgis1/rest/services/GISOpenData/LandRecords/MapServer/13",
     "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/Parcels_Regional/FeatureServer/0",
-    "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/paregion/FeatureServer/0",
     "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/ParcelsRegional/FeatureServer/0",
-    "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/Parcels/FeatureServer/0",
-    "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/Parcel/FeatureServer/0",
-    "https://gisdata.pima.gov/arcgis1/rest/services/GISOpenData/LandRecords/MapServer/0",
-    "https://gisdata.pima.gov/arcgis1/rest/services/GISOpenData/LandRecords/MapServer/1",
-    "https://gisdata.pima.gov/arcgis1/rest/services/GISOpenData/LandRecords/MapServer/2",
-    "https://services1.arcgis.com/Ezk9fcjSUkeadg6u/arcgis/rest/services/MHArrangements/FeatureServer/0",
 ]
 
 PAGE_SIZE = 2000
@@ -107,14 +106,23 @@ def pick_best_endpoint(override: Optional[str]) -> dict:
         else:
             print(f"  ✗ {short}")
 
-    if not candidates:
+    # A usable layer must carry ownership + parcel-id attributes. Record count
+    # alone is a trap: the geometry layers (parcel LINES) have 3x the records
+    # of the real parcel roll and zero assessor data.
+    owner_fields = set(FIELD_MAP["owner"]) | {"MAIL1"}
+    apn_fields = set(FIELD_MAP["apn"])
+    usable = [c for c in candidates
+              if owner_fields & set(c["fields"]) and apn_fields & set(c["fields"])]
+
+    if not usable:
         raise RuntimeError(
-            "No working Pima parcel endpoint. Go to https://gisopendata.pima.gov, "
+            "No Pima endpoint with ownership attributes (owner/MAIL1 + parcel id). "
+            "Refusing to pull a geometry-only layer. Go to https://gisopendata.pima.gov, "
             "find the Parcels - Regional dataset, click 'View Data Source', and "
             "pass that URL with --url."
         )
 
-    best = max(candidates, key=lambda x: x["count"])
+    best = max(usable, key=lambda x: x["count"])
     print(f"\nUsing: {best['name']} ({best['count']:,} records)")
     return best
 
@@ -185,6 +193,44 @@ UNIFIED_FIELDS = list(FIELD_MAP.keys()) + ["county", "source_objectid",
                                            "absentee", "out_of_state", "apn_norm"]
 
 
+STATE_RE = re.compile(r"\b([A-Z]{2})\b\s*$")   # 2-letter state at end of line
+
+
+def _clean(s) -> str:
+    if s is None:
+        return ""
+    return str(s).strip().strip(".").strip()
+
+
+def parse_mail_block(row: dict) -> dict:
+    """
+    LandRecords layer 12 ships owner + mailing as a 5-line mail block:
+    MAIL1 = owner name; MAIL2-5 = street/attn lines ending in a "CITY ST"
+    line. Walk backwards for the city/state line; the line above it is the
+    street. (Ported from pipeline/enrich_pima_parcels.py.)
+    """
+    lines = [_clean(row.get(f"MAIL{i}")) for i in range(1, 6)]
+    owner = lines[0]
+    body = [x for x in lines[1:] if x and x != "."]
+    mail_city = mail_state = mail_address = ""
+    idx = -1
+    for i in range(len(body) - 1, -1, -1):
+        m = STATE_RE.search(body[i])
+        if m:
+            mail_state = m.group(1).upper()
+            mail_city = body[i][:m.start()].strip()
+            idx = i
+            break
+    if idx >= 0:
+        street_lines = body[:idx]
+        if street_lines:
+            mail_address = street_lines[-1]
+    else:
+        mail_address = " ".join(body)
+    return {"owner": owner, "mail_address": mail_address,
+            "mail_city": mail_city, "mail_state": mail_state}
+
+
 def normalize(row: dict, oid_field: str) -> dict:
     out = {"county": "Pima", "source_objectid": row.get(oid_field)}
     for dest, candidates in FIELD_MAP.items():
@@ -194,6 +240,31 @@ def normalize(row: dict, oid_field: str) -> dict:
                 val = row[cand]
                 break
         out[dest] = val
+
+    # LandRecords layer 12: owner/mailing live in the MAIL1-5 block, ZIP is
+    # the MAILING zip (not situs), site address is ADDRESS_OL / JURIS_OL.
+    if row.get("MAIL1"):
+        mb = parse_mail_block(row)
+        out["owner"] = out.get("owner") or mb["owner"] or None
+        out["mail_address"] = out.get("mail_address") or mb["mail_address"] or None
+        out["mail_city"] = out.get("mail_city") or mb["mail_city"] or None
+        out["mail_state"] = out.get("mail_state") or mb["mail_state"] or None
+        out["mail_zip"] = out.get("mail_zip") or (_clean(row.get("ZIP"))[:5] or None)
+        # generic FIELD_MAP wrongly grabs the mailing ZIP as site_zip here
+        if row.get("ZIP") and out.get("site_zip") == row.get("ZIP"):
+            out["site_zip"] = None
+        if not out.get("site_address"):
+            out["site_address"] = _clean(row.get("ADDRESS_OL")) or None
+        juris = _clean(row.get("JURIS_OL")).upper()
+        # Unincorporated county is not a city — leaving site_city blank keeps
+        # the absentee check (mail city != site city) from false-firing
+        if not out.get("site_city") and juris and "UNINCORPORATED" not in juris and juris != "PIMA COUNTY":
+            out["site_city"] = juris
+        # PARCEL is the 9-char taxcode; display dashed book-map-parcel
+        apn_raw = _clean(out.get("apn"))
+        if apn_raw and "-" not in apn_raw and len(apn_raw) >= 8:
+            out["apn"] = f"{apn_raw[:3]}-{apn_raw[3:5]}-{apn_raw[5:]}"
+
     mail = (out.get("mail_state") or "").strip().upper()
     site_city = (out.get("site_city") or "").strip().upper()
     mail_city = (out.get("mail_city") or "").strip().upper()
