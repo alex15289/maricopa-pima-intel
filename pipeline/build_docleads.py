@@ -54,6 +54,12 @@ DASHBOARD_CAP = 60_000  # generous; doc-leads are far smaller than the old score
 NS_CODE = "NS"
 CLOSERS = {"CQ": "cancelled", "TD": "completed"}
 KILL_LOOKBACK_DAYS = 400   # an NS may sit up to ~13 months before sale/cancel
+# The cumulative doc store starts empty and fills over successive daily runs
+# (retention-capped). Until it has observed a full lookback of closer history,
+# an "active" NS can't be confirmed — a cancellation/completion may exist in the
+# unscanned past. We mark those NS provisional so the UI never reads them as
+# definitively active. Self-heals once coverage reaches this many days.
+CONFIRM_COVERAGE_DAYS = 180
 
 
 # ---------------------------------------------------------------------------
@@ -145,15 +151,27 @@ def person_names(names: list[str]) -> set[str]:
             if n and not is_business_name(n) and normalize_name(n)}
 
 
-def apply_foreclosure_lifecycle(docs: list[dict]) -> tuple[list[dict], dict]:
+def apply_foreclosure_lifecycle(docs: list[dict], today: date) -> tuple[list[dict], dict]:
     """Return (leads_kept, stats). NS docs get a status; CQ/TD docs are consumed
     as closers of their matching NS and removed from the lead list."""
     ns_leads = [d for d in docs if d.get("doc_code") == NS_CODE]
     closers = [d for d in docs if d.get("doc_code") in CLOSERS]
     others = [d for d in docs if d.get("doc_code") != NS_CODE and d.get("doc_code") not in CLOSERS]
 
+    # How far back does our foreclosure (NS + closer) visibility reach? An active
+    # NS is only *confirmed* active if we have observed closers continuously from
+    # its recording date to now — i.e. coverage extends at least CONFIRM_COVERAGE_DAYS.
+    fore_dates = [parse_date(d.get("recorded_date")) for d in ns_leads + closers]
+    fore_dates = [d for d in fore_dates if d]
+    coverage_start = min(fore_dates) if fore_dates else today
+    coverage_days = (today - coverage_start).days
+    history_confident = coverage_days >= CONFIRM_COVERAGE_DAYS
+
     for n in ns_leads:
         n["status"] = "active"
+        # provisional unless we have confirmed closer history back past this NS
+        nd = parse_date(n.get("recorded_date"))
+        n["status_provisional"] = (not history_confident) or (nd is not None and nd < coverage_start)
 
     # index NS by APN and by each person-name
     by_apn: dict[str, list[dict]] = defaultdict(list)
@@ -188,6 +206,7 @@ def apply_foreclosure_lifecycle(docs: list[dict]) -> tuple[list[dict], dict]:
                 best, best_gap = n, gap
         if best is not None:
             best["status"] = CLOSERS[c["doc_code"]]
+            best["status_provisional"] = False   # closed by an observed document
             best["status_doc"] = {
                 "doc_type": c.get("doc_type"), "doc_number": c.get("doc_number"),
                 "recorded_date": c.get("recorded_date"),
@@ -198,9 +217,17 @@ def apply_foreclosure_lifecycle(docs: list[dict]) -> tuple[list[dict], dict]:
         "ns_total": len(ns_leads),
         "ns_cancelled": sum(1 for n in ns_leads if n.get("status") == "cancelled"),
         "ns_completed": sum(1 for n in ns_leads if n.get("status") == "completed"),
+        "ns_active_confirmed": sum(1 for n in ns_leads
+                                   if n.get("status") == "active" and not n.get("status_provisional")),
+        "ns_active_provisional": sum(1 for n in ns_leads
+                                     if n.get("status") == "active" and n.get("status_provisional")),
         "closers_total": len(closers),
         "closers_matched": matched_closers,
         "closers_dropped": len(closers) - matched_closers,
+        "coverage_start": coverage_start.isoformat(),
+        "coverage_days": coverage_days,
+        "history_confident": history_confident,
+        "confirm_coverage_days": CONFIRM_COVERAGE_DAYS,
     }
     return others + ns_leads, stats
 
@@ -251,11 +278,15 @@ def build(limit_dashboard: int = DASHBOARD_CAP) -> dict:
     all_docs = mar_docs + pima_docs + tax_docs
 
     # ---- foreclosure lifecycle (CQ/TD close NS) ------------------------------
-    leads, life_stats = apply_foreclosure_lifecycle(all_docs)
+    leads, life_stats = apply_foreclosure_lifecycle(all_docs, today)
     log.info(f"foreclosure lifecycle: {life_stats['ns_total']:,} NS "
-             f"({life_stats['ns_cancelled']:,} cancelled, {life_stats['ns_completed']:,} completed); "
-             f"{life_stats['closers_matched']:,}/{life_stats['closers_total']:,} closers matched, "
-             f"{life_stats['closers_dropped']:,} dropped (no NS in window)")
+             f"({life_stats['ns_cancelled']:,} cancelled, {life_stats['ns_completed']:,} completed, "
+             f"{life_stats['ns_active_confirmed']:,} active-confirmed, "
+             f"{life_stats['ns_active_provisional']:,} active-provisional); "
+             f"{life_stats['closers_matched']:,}/{life_stats['closers_total']:,} closers matched")
+    if not life_stats["history_confident"]:
+        log.info(f"  ⚠ closer history only spans {life_stats['coverage_days']}d "
+                 f"(need {life_stats['confirm_coverage_days']}d) — active NS shown provisional until then")
 
     # ---- enrichment + annotations -------------------------------------------
     for lead in leads:

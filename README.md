@@ -113,6 +113,11 @@ python pipeline/export_csv.py --county Maricopa --doc-type "Notice of Trustee Sa
 ### Foreclosure lifecycle
 `pipeline/build_docleads.py` treats `NTS Cancelled` (CQ) and `Trustee's Deed` (TD) as closers: they mark their matching `Notice of Trustee Sale` cancelled/completed rather than appearing as standalone leads. Matching is by resolved APN or shared party name, nearest prior NS within `KILL_LOOKBACK_DAYS`.
 
+**Provisional status while the store warms up.** The cumulative document store starts empty and fills over successive daily runs (retention-capped). Until its closer history spans `CONFIRM_COVERAGE_DAYS` (180), an "active" NS cannot be confirmed — a cancellation could exist in the not-yet-scanned past — so it is flagged `status_provisional` and the dashboard shows it as a dashed **`active?`** badge (with an explanation in the detail panel) rather than a definitive `active`. This self-heals automatically: once the automation has been running continuously for ~180 days, `coverage_days` reaches the threshold and active NS become confirmed (`history_confident: true` in `leads.json`'s `foreclosure_lifecycle`). No manual step required.
+
+### Default-off document types
+Three high-volume, low-resolution people-lien / civil types ship **off by default** in the dashboard — `Judgment`, `AHCCCS Lien`, `Mechanics Lien` (set in `DEFAULT_OFF` in `index.html`). They are mostly unresolved (business/agency parties) and would crowd the view; they remain in `leads.json` and can be toggled on per campaign from the sidebar (marked `off`). All other types are on by default.
+
 ### Date window
 Pass `--days N` to `maricopa_recorder_api.py` (default 30; API coverage goes back to 1871) and to `pima_deeds.py` (default 90; the GIS deed layer lags recording by ~2 weeks). `--retention N` controls how long documents persist in the cumulative store (default 180 days) — this is what lets a `TD`/`CQ` match an `NS` scraped in an earlier run.
 
