@@ -161,6 +161,61 @@ def match_name(last: str, first: str, full: str, exact_idx, by_last_idx) -> tupl
     return (cands[0], 2) if len(cands) == 1 else (None, 0)
 
 
+def candidate_parcels(last: str, first: str, full: str, exact_idx, by_last_idx) -> dict[str, dict]:
+    """All parcels a person name *could* be, as {apn: parcel}. Looser than
+    match_name (it returns the whole ambiguous set instead of rejecting it) —
+    used only for co-party intersection."""
+    out: dict[str, dict] = {}
+    if not last or len(last) < 3 or not first:
+        return out
+    for p in exact_idx.get(full, []):
+        if p.get("apn"):
+            out[p["apn"]] = p
+    if out:
+        return out
+    first_tok = first.split()[0] if first else ""
+    if len(first_tok) < 2:
+        return out
+    for f, p in by_last_idx.get(last, []):
+        if f and f.split():
+            ft = f.split()[0]
+            if (ft.startswith(first_tok) or first_tok.startswith(ft)) and p.get("apn"):
+                out[p["apn"]] = p
+    return out
+
+
+def resolve_by_coparty(names: list[str], exact_idx, by_last_idx, repeat_signers: set[str]
+                       ) -> dict | None:
+    """When a document lists multiple person parties (e.g. a borrower couple),
+    each name alone may be ambiguous, but the parcel they SHARE is usually
+    unique. Intersect the candidate parcels of the doc's person names; if
+    exactly one parcel is common to 2+ names, that's a confident resolve."""
+    per_name = []
+    for n in names or []:
+        parsed = parse_recorder_name(n)
+        if not parsed:
+            continue
+        last, first, full = parsed
+        if full in repeat_signers:
+            continue
+        cands = candidate_parcels(last, first, full, exact_idx, by_last_idx)
+        if cands:
+            per_name.append(cands)
+    if len(per_name) < 2:
+        return None
+    # intersect APN sets across the contributing names
+    common = set(per_name[0])
+    for c in per_name[1:]:
+        common &= set(c)
+    if len(common) == 1:
+        apn = next(iter(common))
+        # return the parcel object from whichever name carried it
+        for c in per_name:
+            if apn in c:
+                return c[apn]
+    return None
+
+
 def detect_repeat_signers(docs: list[dict], threshold: int = 5) -> set[str]:
     """Names appearing on N+ filings are trustees/attorneys/agents, not owners."""
     freq: dict[str, int] = defaultdict(int)
@@ -175,7 +230,8 @@ def detect_repeat_signers(docs: list[dict], threshold: int = 5) -> set[str]:
 
 def resolve_names(names: list[str], exact_idx, by_last_idx, repeat_signers: set[str]
                   ) -> tuple[dict | None, int]:
-    """Try each party name; return (parcel, tier) for the best (lowest-tier) hit."""
+    """Try each party name; return (parcel, tier) for the best (lowest-tier) hit.
+    Tiers: 1 exact-unique, 2 lastname+firstprefix-unique, 3 co-party intersection."""
     best_parcel, best_tier = None, 0
     for n in names or []:
         parsed = parse_recorder_name(n)
@@ -189,7 +245,13 @@ def resolve_names(names: list[str], exact_idx, by_last_idx, repeat_signers: set[
             best_parcel, best_tier = parcel, tier
             if tier == 1:
                 break
-    return best_parcel, best_tier
+    if best_parcel:
+        return best_parcel, best_tier
+    # No single name resolved cleanly — try the co-party intersection (tier 3)
+    parcel = resolve_by_coparty(names, exact_idx, by_last_idx, repeat_signers)
+    if parcel:
+        return parcel, 3
+    return None, 0
 
 
 # ---------------------------------------------------------------------------
