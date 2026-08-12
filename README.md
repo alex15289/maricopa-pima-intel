@@ -35,7 +35,9 @@ Live dashboard: `index.html` — static, GitHub Pages ready, reads `data/leads.j
                           index.html dashboard         Skip Trace / GHL CSV
 ```
 
-Maricopa recorder documents carry party **names, not APNs**, so they are joined to the parcel master by owner name (`pipeline/match_recorder.py`, strict-first). Documents that can't be pinned to a parcel stay in the list as **unresolved** leads — still exported with their name + document number for skip tracing. Pima deed transfers arrive already parcel-resolved from the GIS layer. A `NTS Cancelled` (CQ) or `Trustee's Deed` (TD) is not a standalone lead — it **closes** its matching Notice of Trustee Sale, marking that lead cancelled or completed.
+Maricopa recorder documents carry party **names, not APNs**. They resolve two ways, in order of confidence: (1) **deed-number direct join** — the parcel master carries `DEED_NUMBER`, the recording number of the deed that vests each parcel, so a recorded deed whose number matches is pinned to that APN by exact identifier; (2) **name matching** (`pipeline/match_recorder.py`, strict-first, with a co-party intersection tier) for everything else. Documents that can't be pinned stay in the list as **unresolved** leads — still exported with their name + document number for skip tracing. Pima deed transfers arrive already parcel-resolved from the GIS layer. A `NTS Cancelled` (CQ) or `Trustee's Deed` (TD) is not a standalone lead — it **closes** its matching Notice of Trustee Sale, marking that lead cancelled or completed.
+
+**Deeds resolve retroactively.** The assessor lags ~4 weeks writing a new deed into `DEED_NUMBER`, so a freshly-recorded deed will show **unresolved until that processing clears**, then resolve automatically on a later build — this is expected, not a bug. The dashboard says as much in the detail panel for recent unresolved deeds.
 
 ---
 

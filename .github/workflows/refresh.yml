@@ -62,8 +62,10 @@ jobs:
           path: |
             data/maricopa_parcels.jsonl
             data/pima_parcels.jsonl
-          # v2: v1 entries hold a geometry-only Pima pull (lines layer) — unusable
-          key: parcels-v2-${{ steps.week.outputs.week }}
+          # v3: adds DEED_NUMBER to the Maricopa parcel schema (deed#->APN direct
+          #     join). Bumping the key forces a one-time re-pull with the new
+          #     field — no manual step; subsequent weeks restore from cache.
+          key: parcels-v3-${{ steps.week.outputs.week }}
 
       - name: Pull Maricopa parcel master (ArcGIS)
         if: steps.cache-parcels.outputs.cache-hit != 'true'

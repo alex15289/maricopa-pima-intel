@@ -157,6 +157,10 @@ FIELD_MAP = {
     "lpv":             ["LPV_CUR"],
     "last_sale_date":  ["SALE_DATE", "DEED_DATE"],
     "last_sale_price": ["SALE_PRICE"],
+    # Recording number of the deed that currently vests the parcel. Lets recorder
+    # deed documents resolve to a parcel by exact identifier (doc# -> APN) instead
+    # of fuzzy name matching. Assessor lags ~4 weeks processing a new deed in here.
+    "deed_number":     ["DEED_NUMBER"],
     "latitude":        ["LATITUDE"],
     "longitude":       ["LONGITUDE"],
     "jurisdiction":    ["JURISDICTION"],

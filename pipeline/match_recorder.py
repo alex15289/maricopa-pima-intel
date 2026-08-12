@@ -117,22 +117,31 @@ def parse_recorder_name(name: str) -> tuple[str, str, str] | None:
 # Index + resolve API (imported by build_docleads.py)
 # ---------------------------------------------------------------------------
 def build_name_index(parcels: list[dict]) -> tuple[dict, dict]:
-    """From a list of Maricopa parcel dicts, build (exact_full_idx, by_last_idx)."""
+    """From a list of Maricopa parcel dicts, build (exact_full_idx, by_last_idx).
+
+    Indexes both the primary owner (OWNER_NAME) and the in-care-of party
+    (owner_2 / INCAREOF) — the latter is populated on ~13% of parcels and often
+    carries a real person name the owner field doesn't."""
     exact: dict[str, list[dict]] = defaultdict(list)
     by_last: dict[str, list[tuple[str, dict]]] = defaultdict(list)
-    skipped = 0
+    skipped = incareof = 0
     for p in parcels:
-        owner = p.get("owner") or ""
-        if is_business_name(owner):
-            skipped += 1
-            continue
-        for last, first, full in parse_parcel_owner(owner):
-            if not first or len(last) < 3:
+        for field, is_secondary in (("owner", False), ("owner_2", True)):
+            name = p.get(field) or ""
+            if not name or is_business_name(name):
+                if field == "owner" and name:
+                    skipped += 1
                 continue
-            exact[full].append(p)
-            by_last[last].append((first, p))
+            for last, first, full in parse_parcel_owner(name):
+                if not first or len(last) < 3:
+                    continue
+                exact[full].append(p)
+                by_last[last].append((first, p))
+                if is_secondary:
+                    incareof += 1
     log.info(f"name index: {len(parcels):,} parcels, {skipped:,} business/LLC skipped, "
-             f"{len(exact):,} exact names, {len(by_last):,} last names")
+             f"{len(exact):,} exact names ({incareof:,} from in-care-of), "
+             f"{len(by_last):,} last names")
     return exact, by_last
 
 

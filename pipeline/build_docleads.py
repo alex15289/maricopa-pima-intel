@@ -255,25 +255,47 @@ def build(limit_dashboard: int = DASHBOARD_CAP) -> dict:
     pima_docs = load_jsonl(DATA_DIR / "pima_recorder_docs.jsonl")
     tax_docs = load_jsonl(DATA_DIR / "pima_tax_docs.jsonl")
 
-    # ---- resolve Maricopa docs by name --------------------------------------
+    # ---- resolve Maricopa docs ----------------------------------------------
+    # Precedence: DEED_NUMBER exact identifier join first (a recorded deed whose
+    # recording number vests a parcel is an authoritative APN link), then fall
+    # back to fuzzy name matching. The assessor lags ~4 weeks writing a new deed
+    # into DEED_NUMBER, so freshly-recorded deeds resolve retroactively as that
+    # lag clears — an unresolved recent deed is expected, not broken.
     if mar_docs:
-        exact_idx, by_last_idx = build_name_index(
-            [p for p in maricopa_parcels if p.get("county") == "Maricopa"])
+        mar_parcels = [p for p in maricopa_parcels if p.get("county") == "Maricopa"]
+        deed_index: dict[str, dict] = {}
+        for p in mar_parcels:
+            dn = p.get("deed_number")
+            if dn:
+                deed_index[str(dn).strip()] = p
+        log.info(f"deed-number index: {len(deed_index):,} parcels carry a vesting deed number")
+
+        exact_idx, by_last_idx = build_name_index(mar_parcels)
         repeat = detect_repeat_signers(mar_docs)
         log.info(f"{len(repeat):,} repeat-signer (trustee/attorney) names filtered")
-        res_count = 0
+        by_deed = by_name = 0
         for d in mar_docs:
-            parcel, tier = resolve_names(d.get("names", []), exact_idx, by_last_idx, repeat)
+            parcel = deed_index.get(str(d.get("doc_number") or "").strip())
+            if parcel:
+                d["resolved_by"] = "deed_number"
+                d["match_tier"] = None
+                by_deed += 1
+            else:
+                parcel, tier = resolve_names(d.get("names", []), exact_idx, by_last_idx, repeat)
+                if parcel:
+                    d["resolved_by"] = "name"
+                    d["match_tier"] = tier
+                    by_name += 1
             if parcel:
                 d["apn"] = parcel.get("apn")
                 d["apn_norm"] = parcel.get("apn_norm")
-                d["match_tier"] = tier
                 d["resolved"] = True
-                res_count += 1
             else:
                 d["resolved"] = False
+        res_count = by_deed + by_name
         log.info(f"Maricopa: resolved {res_count:,}/{len(mar_docs):,} "
-                 f"({100*res_count/max(len(mar_docs),1):.1f}%) to a parcel")
+                 f"({100*res_count/max(len(mar_docs),1):.1f}%) — "
+                 f"{by_deed:,} by deed# (exact), {by_name:,} by name")
 
     all_docs = mar_docs + pima_docs + tax_docs
 

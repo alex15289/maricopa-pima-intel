@@ -183,6 +183,10 @@ const CAT_ORDER = ["Foreclosure","Tax & Liens","Estate","Legal","Transfers","Oth
 // High-volume, low-resolution people-lien / civil types: shipped OFF by default,
 // available to enable per campaign (they're mostly unresolved and crowd the view).
 const DEFAULT_OFF = new Set(["Judgment","AHCCCS Lien","Mechanics Lien"]);
+// Deed-type docs resolve by exact recording-number join against the assessor's
+// parcel record, which lags recording ~4 weeks — so a recent unresolved deed is
+// expected, not broken. Used to show a clarifying note in the detail panel.
+const DEED_TYPES = new Set(["Quit Claim Deed","Trustee's Deed","Deed Transfer","Probate Deed"]);
 const catVar = c => c==="Tax & Liens" ? "--cat-Tax" : (["Foreclosure","Estate","Legal","Transfers"].includes(c)?`--cat-${c}`:"--cat-Other");
 const fmtN = n => (n||0).toLocaleString();
 const fmtM = v => v==null||v===""?"—":"$"+Math.round(+v).toLocaleString();
@@ -386,6 +390,7 @@ function detail() {
     <div class="sec"><h4>Parties</h4>
       ${(l.names&&l.names.length)?`<div style="font-size:12px">${l.names.join("<br>")}</div>`:'<span style="color:var(--text-muted)">—</span>'}
     </div>
+    ${(!l.resolved && DEED_TYPES.has(l.doc_type)) ? `<div class="provbanner" style="border-left-color:var(--accent);background:rgba(59,130,246,.08);color:var(--accent-glow)"><b>Unresolved — expected for a recent deed.</b> Deeds resolve by exact recording-number match against the assessor's parcel record, which lags recording by ~4 weeks. This deed will resolve automatically once that processing clears.</div>` : ""}
     <div class="sec"><h4>Property ${l.resolved?"":"(unresolved — name-only lead)"}</h4><div class="kv">
       <span class="k">APN</span><span class="v">${l.apn||"—"}</span>
       <span class="k">Owner</span><span class="v">${l.owner||"—"}</span>
@@ -395,7 +400,7 @@ function detail() {
       <span class="k">Mail city/st</span><span class="v">${l.mail_city||""} ${l.mail_state||""} ${l.mail_zip||""}</span>
       <span class="k">FCV</span><span class="v">${fmtM(l.fcv)}</span>
       <span class="k">Year built</span><span class="v">${l.year_built||"—"}</span>
-      ${l.match_tier?`<span class="k">Match confidence</span><span class="v">tier ${l.match_tier}</span>`:""}
+      ${l.resolved_by==="deed_number"?`<span class="k">Resolved by</span><span class="v" style="color:var(--ok)">deed # (exact)</span>`:l.resolved_by==="name"?`<span class="k">Resolved by</span><span class="v">name match · tier ${l.match_tier}</span>`:""}
     </div></div>
     <div class="sec"><h4>Annotations</h4>${annHtml}</div>
   `;
