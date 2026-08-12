@@ -1,2656 +1,412 @@
-<!doctype html>
-<html lang="en">
-<head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Maricopa + Pima Intel · Motivated Seller Lead Desk</title>
-<meta name="description" content="Operator dashboard for Maricopa and Pima County motivated seller signals" />
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Maricopa + Pima — Recorded Document Intel</title>
 <style>
   :root {
-    /* Xcerebro dark theme — deep black, electric blue, saturated signal colors */
-    --bg:           #0a0e1a;       /* deep black page bg */
-    --bg-panel:     #111827;       /* card/sidebar bg */
-    --bg-elev:      #1a2236;       /* hover/elevated */
-    --border:       #1e293b;       /* subtle borders */
-    --text:         #f1f5f9;       /* primary text */
-    --text-dim:     #94a3b8;       /* secondary text */
-    --text-muted:   #64748b;       /* tertiary text */
-    --accent:       #3b82f6;       /* electric blue (Xcerebro) */
-    --accent-dim:   #2563eb;       /* deeper blue */
-    --accent-soft:  #3b82f622;     /* tinted overlay */
-    --accent-glow:  #60a5fa;       /* light blue glow */
-    --navy:         #1e3a8a;       /* deep navy */
-    --pima:         #f97316;       /* desert orange */
-    --maricopa:     #38bdf8;       /* sky blue */
-    --danger:       #ef4444;       /* alert red */
-    --ok:           #10b981;       /* emerald */
-    --warn:         #f59e0b;       /* amber */
-    /* Pattern badge colors — saturated neons that pop on dark */
-    --pat-foreclosure: #ef4444;
-    --pat-tax:         #f59e0b;
-    --pat-estate:      #a855f7;
-    --pat-legal:       #3b82f6;
-    --pat-vacancy:     #94a3b8;
-    --pat-landlord:    #10b981;
-    /* Glow shadows for dark theme depth */
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4), 0 0 0 1px rgba(59,130,246,0.04);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.5), 0 0 0 1px rgba(59,130,246,0.08);
-    --glow-blue: 0 0 12px rgba(59,130,246,0.25);
-    --glow-red:  0 0 16px rgba(239,68,68,0.35);
+    /* Xcerebro dark theme */
+    --bg:#0a0e1a; --bg-panel:#111827; --bg-elev:#1a2236; --border:#1e293b;
+    --text:#f1f5f9; --text-dim:#94a3b8; --text-muted:#64748b;
+    --accent:#3b82f6; --accent-dim:#2563eb; --accent-soft:#3b82f622; --accent-glow:#60a5fa;
+    --pima:#f97316; --maricopa:#38bdf8; --danger:#ef4444; --ok:#10b981; --warn:#f59e0b;
+    /* category colors */
+    --cat-Foreclosure:#ef4444; --cat-Tax:#f59e0b; --cat-Estate:#a855f7;
+    --cat-Legal:#3b82f6; --cat-Transfers:#10b981; --cat-Other:#64748b;
+    --shadow-md:0 4px 12px rgba(0,0,0,.5),0 0 0 1px rgba(59,130,246,.08);
+    --glow-blue:0 0 12px rgba(59,130,246,.25);
   }
-  * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text); font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; font-size:13px; }
-  body { overflow:hidden; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body { background:var(--bg); color:var(--text); font:13px/1.45 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif; overflow:hidden; }
   a { color:var(--accent-glow); text-decoration:none; }
-  button, input, select { font:inherit; color:inherit; }
+  a:hover { text-decoration:underline; }
+  code { background:var(--bg-elev); padding:1px 5px; border-radius:3px; font-family:"JetBrains Mono",ui-monospace,monospace; font-size:11px; }
 
-  .app { display:grid; grid-template-rows: auto 1fr auto; height:100vh; }
+  /* layout */
+  .app { display:grid; grid-template-rows:auto auto 1fr; height:100vh; }
+  header { padding:12px 18px; border-bottom:1px solid var(--border); background:linear-gradient(180deg,#0d1424,#0a0e1a); display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
+  .brand { font-weight:700; font-size:15px; letter-spacing:.3px; }
+  .brand .dot { color:var(--accent); }
+  .kpis { display:flex; gap:20px; margin-left:auto; flex-wrap:wrap; }
+  .kpi { text-align:right; }
+  .kpi .v { font-size:17px; font-weight:700; font-family:"JetBrains Mono",monospace; }
+  .kpi .l { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; }
+  .kpi .v.mar { color:var(--maricopa); } .kpi .v.pima { color:var(--pima); }
 
-  /* ---------- Header ---------- */
-  header {
-    display:flex; align-items:center; gap:24px;
-    padding:14px 22px; border-bottom:1px solid var(--border);
-    background: linear-gradient(180deg, #111827, #0a0e1a);
-    border-bottom:1px solid var(--border);
-  }
-  .brand { display:flex; align-items:baseline; gap:10px; }
-  .brand h1 {
-    font-family:"Fraunces", serif; font-weight:700; font-size:22px; margin:0;
-    letter-spacing:-0.015em; color:var(--text);
-  }
-  .brand h1 .dot { color:var(--accent); text-shadow: 0 0 12px rgba(59,130,246,0.6); }
-  .brand .sub {
-    font-size:10.5px; color:var(--text-muted); text-transform:uppercase;
-    letter-spacing:0.18em;
-  }
-  .kpis { display:flex; gap:22px; margin-left:auto; align-items:center; }
-  .kpi { display:flex; flex-direction:column; gap:2px; text-align:right; }
-  .kpi .val { font-family:"Fraunces",serif; font-size:20px; font-weight:700; color:var(--accent); text-shadow: 0 0 8px rgba(59,130,246,0.25); }
-  .kpi .lbl { font-size:9.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.14em; }
-  .live-kpi { flex-direction:row; align-items:center; gap:7px; padding:6px 10px; border:1px solid rgba(16,185,129,.4); border-radius:16px; background:rgba(16,185,129,.08); }
-  .live-dot { width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 0 0 rgba(16,185,129,.7); animation:live-pulse 1.6s ease-out infinite; }
-  .live-text { font-size:10.5px; font-weight:700; letter-spacing:0.18em; color:#34d399; font-family:"Inter",sans-serif; }
-  @keyframes live-pulse {
-    0%   { box-shadow:0 0 0 0 rgba(16,185,129,.7); }
-    70%  { box-shadow:0 0 0 10px rgba(16,185,129,0); }
-    100% { box-shadow:0 0 0 0 rgba(16,185,129,0); }
-  }
+  .tabsbar { display:flex; gap:6px; padding:8px 18px; border-bottom:1px solid var(--border); background:var(--bg-panel); align-items:center; flex-wrap:wrap; }
+  .tab { padding:5px 14px; border-radius:20px; border:1px solid var(--border); cursor:pointer; font-size:12px; color:var(--text-dim); background:transparent; }
+  .tab:hover { border-color:var(--accent); color:var(--text); }
+  .tab.active { background:var(--accent-soft); border-color:var(--accent); color:var(--text); box-shadow:var(--glow-blue); }
+  .tab .c { color:var(--text-muted); font-size:10px; margin-left:5px; font-family:"JetBrains Mono",monospace; }
+  .quick { margin-left:auto; display:flex; gap:6px; }
+  .quick .tab.on { background:var(--accent); color:#fff; border-color:var(--accent); }
 
-  /* ---------- County tab bar ---------- */
-  .county-tabs {
-    display:flex; gap:0; padding:0 22px; border-bottom:1px solid var(--border);
-    background:var(--bg-panel);
-  }
-  .county-tab {
-    padding:14px 22px; cursor:pointer; user-select:none;
-    font-size:12px; letter-spacing:0.1em; text-transform:uppercase;
-    color:var(--text-dim); border-bottom:2px solid transparent;
-    font-family:"Inter", sans-serif; font-weight:600;
-    display:flex; align-items:center; gap:8px;
-    transition: all .15s ease;
-  }
-  .county-tab:hover { color:var(--text); background:var(--bg-elev); }
-  .county-tab .tab-count { font-size:10px; color:var(--text-muted); font-weight:500; }
-  .county-tab.active { color:var(--accent); border-bottom-color:var(--accent); background:var(--accent-soft); box-shadow:inset 0 -2px 8px rgba(59,130,246,0.15); }
-  .county-tab.active .tab-count { color:var(--accent); }
-  .county-tab[data-tab="Maricopa"].active { color:var(--maricopa); border-bottom-color:var(--maricopa); background:rgba(56,189,248,0.08); box-shadow:inset 0 -2px 8px rgba(56,189,248,0.15); }
-  .county-tab[data-tab="Maricopa"].active .tab-count { color:var(--maricopa); }
-  .county-tab[data-tab="Pima"].active { color:var(--pima); border-bottom-color:var(--pima); background:rgba(249,115,22,0.08); box-shadow:inset 0 -2px 8px rgba(249,115,22,0.15); }
-  .county-tab[data-tab="Pima"].active .tab-count { color:var(--pima); }
+  main { display:grid; grid-template-columns:250px 1fr 380px; overflow:hidden; }
+  aside { border-right:1px solid var(--border); overflow-y:auto; padding:12px; background:var(--bg-panel); }
+  aside h3 { font-size:10px; text-transform:uppercase; letter-spacing:.6px; color:var(--text-muted); margin:16px 0 7px; }
+  aside h3:first-child { margin-top:2px; }
+  .fld { width:100%; padding:6px 9px; background:var(--bg-elev); border:1px solid var(--border); border-radius:5px; color:var(--text); font-size:12px; }
+  .fld:focus { outline:none; border-color:var(--accent); }
+  .daterow { display:flex; gap:6px; }
+  .daterow input { width:50%; }
 
-  /* ---------- Tier pills (replace numeric score) ---------- */
-  .tier-pill {
-    display:inline-flex; align-items:center; gap:5px;
-    padding:4px 9px; border-radius:12px; font-size:10.5px; font-weight:700;
-    letter-spacing:0.1em; font-family:"JetBrains Mono",monospace;
-    border:1px solid; white-space:nowrap; cursor:help;
-  }
-  .tier-pill.hot    { background:rgba(239,68,68,0.15);  border-color:rgba(239,68,68,0.5);  color:#fca5a5; box-shadow:var(--glow-red); animation: hot-pulse 2.4s ease-in-out infinite; }
-  .tier-pill.strong { background:rgba(59,130,246,0.15); border-color:rgba(59,130,246,0.5); color:#93c5fd; box-shadow:var(--glow-blue); }
-  .tier-pill.likely { background:rgba(245,158,11,0.12); border-color:rgba(245,158,11,0.45); color:#fcd34d; }
-  .tier-pill.watch  { background:rgba(148,163,184,0.10); border-color:rgba(148,163,184,0.35); color:#cbd5e1; }
-  .tier-pill.cold   { background:rgba(100,116,139,0.06); border-color:rgba(100,116,139,0.2); color:#94a3b8; }
-  @keyframes hot-pulse {
-    0%   { box-shadow: 0 0 8px rgba(239,68,68,0.25); }
-    50%  { box-shadow: 0 0 18px rgba(239,68,68,0.55); }
-    100% { box-shadow: 0 0 8px rgba(239,68,68,0.25); }
-  }
-  .tier-raw { font-size:9px; color:var(--text-muted); margin-left:6px; font-family:"JetBrains Mono",monospace; }
+  .catgroup { margin-bottom:4px; }
+  .cathead { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; padding:5px 4px 3px; display:flex; align-items:center; gap:6px; color:var(--text-dim); }
+  .cathead .swatch { width:8px; height:8px; border-radius:2px; }
+  .dtchip { display:flex; align-items:center; justify-content:space-between; padding:4px 8px; border-radius:5px; cursor:pointer; font-size:12px; color:var(--text-dim); }
+  .dtchip:hover { background:var(--bg-elev); color:var(--text); }
+  .dtchip.on { background:var(--accent-soft); color:var(--text); }
+  .dtchip .n { font-family:"JetBrains Mono",monospace; font-size:10px; color:var(--text-muted); }
+  .dtchip.on .n { color:var(--accent-glow); }
+  .annrow { display:flex; flex-wrap:wrap; gap:5px; }
+  .ann { padding:4px 9px; border-radius:14px; border:1px solid var(--border); cursor:pointer; font-size:11px; color:var(--text-dim); }
+  .ann.on { background:var(--warn); color:#111; border-color:var(--warn); }
 
-  /* Tooltip for "Why HOT?" */
-  .tier-tooltip {
-    position:absolute; z-index:9999; max-width:260px;
-    background:var(--bg-panel); border:1px solid var(--border); border-radius:6px;
-    box-shadow:var(--shadow-md);
-    padding:10px 12px; font-size:11px; line-height:1.5;
-    box-shadow:0 8px 28px rgba(0,0,0,.6);
-    pointer-events:none; opacity:0; transition:opacity .15s;
-  }
-  .tier-tooltip.visible { opacity:1; }
-  .tier-tooltip h4 { font-size:10.5px; margin:0 0 6px; color:var(--accent); letter-spacing:0.08em; text-transform:uppercase; }
-  .tier-tooltip ul { margin:0; padding:0; list-style:none; }
-  .tier-tooltip li { padding:2px 0; color:var(--text); }
-  .tier-tooltip li::before { content:"✓"; color:#22c55e; margin-right:6px; font-weight:700; }
-
-  /* ---------- Main layout ---------- */
-  main { display:grid; grid-template-columns: 300px 1fr 380px; overflow:hidden; }
-
-  /* ---------- Sidebar filters ---------- */
-  aside.filters {
-    border-right:1px solid var(--border); padding:18px 16px;
-    overflow-y:auto; background:var(--bg-panel);
-  }
-  .filter-group { margin-bottom:22px; }
-  .filter-group h3 {
-    margin:0 0 10px; font-size:10px; color:var(--text-dim); letter-spacing:0.12em;
-    text-transform:uppercase; font-weight:700;
-    border-bottom:1px solid var(--border); padding-bottom:8px;
-  }
-  .chip-row { display:flex; flex-wrap:wrap; gap:6px; }
-  .chip {
-    padding:6px 10px; border:1px solid var(--border); border-radius:4px;
-    cursor:pointer; user-select:none; font-size:11px;
-    background:var(--bg-elev); color:var(--text-dim);
-    transition: all .12s ease;
-  }
-  .chip:hover { border-color:var(--accent-dim); color:var(--text); }
-  .chip.active {
-    background:var(--accent-soft); border-color:var(--accent); color:var(--accent);
-  }
-  .chip.county-maricopa.active { background:#3c8ec922; border-color:var(--maricopa); color:var(--maricopa); }
-  .chip.county-pima.active    { background:#c97d3c22; border-color:var(--pima);     color:var(--pima); }
-
-  .slider-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:11px; color:var(--text-dim); }
-  .slider-row .val { color:var(--accent); font-weight:700; }
-  input[type="range"] { width:100%; accent-color:var(--accent); }
-
-  input[type="search"], select {
-    width:100%; background:var(--bg-elev); border:1px solid var(--border);
-    padding:8px 10px; border-radius:4px; color:var(--text);
-  }
-  input[type="search"]:focus, select:focus { outline:none; border-color:var(--accent); }
-
-  .btn {
-    padding:9px 14px; border:1px solid var(--border); background:var(--bg-elev);
-    color:var(--text); border-radius:6px; cursor:pointer; font-size:11px;
-    text-transform:uppercase; letter-spacing:0.06em; font-weight:600;
-    transition:all .15s ease;
-  }
-  .btn:hover { border-color:var(--accent); color:var(--accent-glow); background:var(--accent-soft); box-shadow:var(--glow-blue); }
-  .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; box-shadow:var(--glow-blue); }
-  .btn.primary:hover { background:var(--accent-dim); border-color:var(--accent-dim); color:#fff; box-shadow:0 0 16px rgba(59,130,246,0.4); }
-  .btn-row { display:flex; gap:8px; flex-wrap:wrap; }
-
-  /* ---------- Middle: table + map (table-dominant) ---------- */
-  section.center { display:grid; grid-template-rows: 1fr 34px; overflow:hidden; transition: grid-template-rows .25s ease; }
-  section.center.map-open { grid-template-rows: 1fr 320px; }
-  .table-wrap { overflow:auto; border-bottom:1px solid var(--border); }
-  .map-bar {
-    display:flex; align-items:center; justify-content:space-between;
-    padding:6px 12px; background:var(--bg-panel); border-top:1px solid var(--border);
-    font-size:10.5px; color:var(--text-muted); letter-spacing:0.12em; text-transform:uppercase;
-    cursor:pointer; user-select:none;
-  }
-  .map-bar:hover { color:var(--accent); }
-  .map-bar .map-toggle-icon { font-size:13px; transition:transform .25s ease; }
-  section.center.map-open .map-bar .map-toggle-icon { transform:rotate(180deg); }
-  .map-pane { overflow:hidden; position:relative; }
-  table { width:100%; border-collapse:collapse; font-size:12px; }
-  thead th {
-    position:sticky; top:0; background:var(--bg-panel); color:var(--text-dim);
-    font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
-    font-size:10px; text-align:left; padding:12px 14px; border-bottom:1px solid var(--border);
-    cursor:pointer; user-select:none;
-  }
-  thead th:hover { color:var(--accent); background:var(--bg-elev); }
-  thead th .sort-arrow { opacity:0.45; margin-left:4px; }
-  thead th.sorted .sort-arrow { opacity:1; color:var(--accent); }
-  tbody tr {
-    border-bottom:1px solid var(--border); cursor:pointer; transition:background .08s ease;
-  }
+  /* center table */
+  .center { display:flex; flex-direction:column; overflow:hidden; }
+  .tbar { padding:6px 14px; border-bottom:1px solid var(--border); font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:10px; }
+  .tablewrap { overflow-y:auto; flex:1; }
+  table { width:100%; border-collapse:collapse; }
+  thead th { position:sticky; top:0; background:var(--bg-panel); text-align:left; padding:8px 10px; font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); border-bottom:1px solid var(--border); cursor:pointer; white-space:nowrap; z-index:2; }
+  thead th:hover { color:var(--text); }
+  tbody td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tbody tr { cursor:pointer; }
   tbody tr:hover { background:var(--bg-elev); }
-  tbody tr.selected { background:var(--accent-soft); }
-  tbody td { padding:11px 14px; color:var(--text); }
-  .county-pill {
-    display:inline-block; padding:3px 7px; border-radius:4px; font-size:9.5px;
-    letter-spacing:0.06em; text-transform:uppercase; font-weight:700;
-  }
-  .county-pill.Maricopa { background:rgba(56,189,248,0.12); color:var(--maricopa); border:1px solid rgba(56,189,248,0.3); }
-  .county-pill.Pima     { background:rgba(249,115,22,0.12); color:var(--pima); border:1px solid rgba(249,115,22,0.3); }
-  .score-bar {
-    display:inline-block; vertical-align:middle; width:60px; height:6px;
-    background:var(--bg-elev); border-radius:3px; overflow:hidden; margin-right:8px;
-  }
-  .score-bar span { display:block; height:100%; background:linear-gradient(90deg, var(--accent-dim), var(--accent)); }
-  .signal-tags { display:inline-flex; flex-wrap:wrap; gap:3px; }
-  .signal-tag {
-    font-size:9px; padding:1px 5px; background:var(--bg-elev); border:1px solid var(--border);
-    border-radius:3px; color:var(--text-dim); white-space:nowrap;
-  }
-  .signal-tag.stack { background:var(--accent); color:#0b1220; border-color:var(--accent); font-weight:700; }
+  tbody tr.sel { background:var(--accent-soft); box-shadow:inset 3px 0 0 var(--accent); }
+  .dtbadge { display:inline-block; padding:2px 8px; border-radius:11px; font-size:11px; font-weight:600; white-space:nowrap; }
+  .cpill { display:inline-block; width:20px; text-align:center; border-radius:4px; font-size:10px; font-weight:700; }
+  .cpill.Maricopa { background:rgba(56,189,248,.15); color:var(--maricopa); }
+  .cpill.Pima { background:rgba(249,115,22,.15); color:var(--pima); }
+  .recdate { font-family:"JetBrains Mono",monospace; font-size:11px; color:var(--text-dim); white-space:nowrap; }
+  .fresh { color:var(--ok); font-size:9px; font-weight:700; margin-left:5px; }
+  .unres { color:var(--text-muted); font-style:italic; }
+  .stat { font-size:9px; font-weight:700; text-transform:uppercase; padding:1px 6px; border-radius:8px; }
+  .stat.cancelled { background:rgba(16,185,129,.15); color:var(--ok); }
+  .stat.completed { background:rgba(148,163,184,.15); color:var(--text-dim); }
 
-  #map { height:100%; background:#0e1628; }
-  /* Override leaflet defaults */
-  .leaflet-container { background:#0e1628; font-family:"Inter", sans-serif; }
-  .leaflet-popup-content-wrapper { background:var(--bg-panel); color:var(--text); border-radius:4px; }
-  .leaflet-popup-tip { background:var(--bg-panel); }
-
-  /* ---------- Right: detail panel + calc ---------- */
-  aside.detail {
-    border-left:1px solid var(--border); background:var(--bg-panel);
-    overflow-y:auto; padding:16px;
-  }
-  .empty-detail {
-    color:var(--text-muted); font-size:11px; text-align:center; padding:40px 0;
-    border:1px dashed var(--border); border-radius:4px;
-  }
-  .detail h2 {
-    font-family:"Fraunces",serif; font-size:18px; margin:0 0 2px;
-    letter-spacing:-0.01em;
-  }
-  .detail .sub { color:var(--text-muted); font-size:11px; margin-bottom:14px; }
-  .detail .section { margin:14px 0 18px; }
-  .detail .section h4 {
-    margin:0 0 8px; font-size:9.5px; letter-spacing:0.2em; text-transform:uppercase;
-    color:var(--accent); border-bottom:1px solid var(--border); padding-bottom:5px;
-  }
-  .kv { display:grid; grid-template-columns: 1fr 1fr; gap:6px 12px; font-size:11px; }
-  .kv .k { color:var(--text-muted); }
-  .kv .v { color:var(--text); overflow:hidden; text-overflow:ellipsis; }
-
-  .sig-list { list-style:none; padding:0; margin:0; }
-  .sig-list li {
-    border:1px solid var(--border); border-radius:4px; padding:8px 10px;
-    margin-bottom:6px; font-size:11px; background:var(--bg-elev);
-  }
-  .sig-list li .st { color:var(--accent); font-weight:700; }
-  .sig-list li .dt { color:var(--text-muted); float:right; }
-
-  /* Calculator */
-  .calc-modes { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:10px; }
-  .calc-mode {
-    flex:1; min-width:70px; padding:5px 6px; text-align:center; border:1px solid var(--border);
-    border-radius:3px; cursor:pointer; font-size:9.5px; background:var(--bg-elev);
-    color:var(--text-dim); letter-spacing:0.05em;
-  }
-  .calc-mode.active { background:var(--accent); color:#0b1220; border-color:var(--accent); font-weight:700; }
-  .calc-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:11px; }
-  .calc-row label { color:var(--text-muted); }
-  .calc-row input { width:100px; text-align:right; background:var(--bg-elev); border:1px solid var(--border);
-                    color:var(--text); padding:4px 6px; border-radius:3px; font-family:"JetBrains Mono",monospace; }
-  .calc-row input:focus { outline:none; border-color:var(--accent); }
-  .calc-result {
-    margin-top:12px; padding:10px; background:var(--bg-elev); border:1px solid var(--accent);
-    border-radius:4px;
-  }
-  .calc-result .main {
-    font-family:"Fraunces",serif; font-size:22px; font-weight:700; color:var(--accent);
-  }
-  .calc-result .label { font-size:9.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.15em; }
-
-  /* ---------- Footer ---------- */
-  footer {
-    border-top:1px solid var(--border); padding:8px 22px; font-size:10px;
-    color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;
-    background:var(--bg-panel);
-  }
-
-  /* ---------- v2 Polish: Quick Lists + NEW badges + Global Search + Call Angle ---------- */
-
-  /* Global search in header */
-  .global-search-wrap { position:relative; flex:1; max-width:500px; margin:0 18px; }
-  .global-search {
-    width:100%; padding:10px 14px 10px 38px; border-radius:6px;
-    background:var(--bg-elev); border:1px solid var(--border);
-    color:var(--text); font-size:12.5px; font-family:"JetBrains Mono",monospace;
-    letter-spacing:0.02em;
-  }
-  .global-search:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
-  .global-search-icon {
-    position:absolute; top:50%; transform:translateY(-50%); left:13px;
-    color:var(--text-muted); font-size:14px; pointer-events:none;
-  }
-  .global-autocomplete {
-    position:absolute; top:100%; left:0; right:0; z-index:1500;
-    background:var(--bg-panel); border:1px solid var(--accent-dim);
-    border-radius:4px; max-height:340px; overflow-y:auto; margin-top:4px;
-    box-shadow:0 10px 28px rgba(0,0,0,.5); display:none;
-  }
-  .global-autocomplete.visible { display:block; }
-  .autocomplete-item {
-    padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--border);
-    display:flex; justify-content:space-between; align-items:center; gap:10px;
-  }
-  .autocomplete-item:hover { background:var(--bg-elev); }
-  .autocomplete-item:last-child { border-bottom:none; }
-  .autocomplete-item .ac-main { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .autocomplete-item .ac-owner { color:var(--text); font-size:12px; font-weight:600; }
-  .autocomplete-item .ac-addr  { color:var(--text-muted); font-size:10.5px; }
-  .autocomplete-item .ac-score { font-family:"JetBrains Mono",monospace; font-size:10.5px; color:var(--accent); }
-
-  /* Quick Lists tile strip */
-  .quicklists-strip {
-    display:flex !important; gap:8px; padding:12px 18px; background:var(--bg-panel);
-    border-bottom:1px solid var(--border); overflow-x:auto;
-    min-height:76px; align-items:center;
-  }
-  .ql-tile {
-    flex:0 0 auto; min-width:140px; padding:12px 16px;
-    border:1px solid var(--border); border-radius:8px; background:var(--bg-panel);
-    cursor:pointer; transition:all .15s ease;
-    display:flex !important; flex-direction:column !important; gap:3px;
-    min-height:56px;
-  }
-  .ql-tile:hover { border-color:var(--accent); transform:translateY(-1px); box-shadow: var(--glow-blue); }
-  .ql-tile.active {
-    background:var(--accent-soft); border-color:var(--accent);
-    box-shadow:0 0 0 1px var(--accent), var(--glow-blue);
-  }
-  .ql-tile .ql-icon {
-    font-size:16px !important; display:block !important;
-    line-height:1.2 !important;
-  }
-  .ql-tile .ql-label {
-    font-size:11px !important; font-weight:600; letter-spacing:0.04em;
-    text-transform:uppercase; color:var(--text-dim) !important;
-    display:block !important; line-height:1.3 !important;
-  }
-  .ql-tile .ql-count {
-    font-family:"Fraunces",serif; font-size:18px !important;
-    color:var(--accent) !important; display:block !important; line-height:1.2 !important; font-weight:700;
-    text-shadow: 0 0 8px rgba(59,130,246,0.3);
-  }
-  .ql-tile.active .ql-count { color:var(--accent-glow) !important; }
-  .ql-tile.new-leads .ql-icon { animation: newpulse 1.8s ease-in-out infinite; }
-
-  /* Dimmed state for tiles with 0 matching leads */
-  .ql-tile.empty {
-    opacity:0.4; cursor:not-allowed; pointer-events:none;
-    filter:grayscale(0.7);
-  }
-  .ql-tile.empty .ql-count { color:var(--text-muted) !important; text-shadow:none; }
-
-  /* Filter chip count badges */
-  .chip-count {
-    display:inline-block; margin-left:5px; padding:1px 7px;
-    background:var(--bg-elev); color:var(--text-dim);
-    border-radius:9px; font-size:9.5px; font-weight:700;
-    font-family:"Inter",sans-serif; letter-spacing:0.02em;
-    vertical-align:middle; min-width:16px; text-align:center;
-  }
-  .chip.active .chip-count {
-    background:var(--accent); color:#fff;
-  }
-  .chip-empty {
-    opacity:0.35 !important; cursor:not-allowed !important;
-    pointer-events:none; filter:grayscale(0.8);
-  }
-  .chip-empty .chip-count { color:var(--text-muted) !important; }
-
-  /* Distress pattern badges — color-coded per pattern type */
-  .pattern-badges { display:flex; flex-wrap:wrap; gap:3px; }
-  .pattern-badge {
-    display:inline-block; padding:2px 7px; border-radius:10px;
-    font-size:9.5px; font-weight:700; letter-spacing:0.02em;
-    text-transform:uppercase; white-space:nowrap;
-  }
-  .pattern-badge.pat-foreclosure { background:rgba(239,68,68,0.12); color:#fca5a5; border:1px solid rgba(239,68,68,0.4); }
-  .pattern-badge.pat-tax         { background:rgba(245,158,11,0.12); color:#fcd34d; border:1px solid rgba(245,158,11,0.4); }
-  .pattern-badge.pat-estate      { background:rgba(168,85,247,0.12); color:#d8b4fe; border:1px solid rgba(168,85,247,0.4); }
-  .pattern-badge.pat-legal       { background:rgba(59,130,246,0.12); color:#93c5fd; border:1px solid rgba(59,130,246,0.4); }
-  .pattern-badge.pat-vacancy     { background:rgba(148,163,184,0.12); color:#cbd5e1; border:1px solid rgba(148,163,184,0.4); }
-  .pattern-badge.pat-landlord    { background:rgba(16,185,129,0.12); color:#6ee7b7; border:1px solid rgba(16,185,129,0.4); }
-
-  @keyframes newpulse { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
-
-  /* NEW badge on leads */
-  .new-badge {
-    display:inline-block; padding:1px 6px; border-radius:8px; font-size:9px;
-    font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
-    background:#ef4444; color:#fff; margin-left:6px; vertical-align:middle;
-    animation: newpulse 1.8s ease-in-out infinite;
-  }
-
-  /* Call Angle box in detail pane */
-  .call-angle {
-    background:linear-gradient(135deg, var(--accent-soft), rgba(212,175,55,0.04));
-    border:1px solid var(--accent-dim); border-radius:6px;
-    padding:14px 16px; margin:14px 0;
-  }
-  .call-angle .angle-head {
-    font-family:"Fraunces",serif; font-size:15px; color:var(--accent);
-    margin-bottom:6px; font-weight:700;
-  }
-  .call-angle .angle-pitch {
-    font-size:12px; color:var(--text); line-height:1.55;
-  }
-  .call-angle .angle-tag {
-    display:inline-block; margin-top:8px; padding:2px 7px;
-    background:var(--bg-elev); border:1px solid var(--border); border-radius:3px;
-    font-family:"JetBrains Mono",monospace; font-size:9.5px;
-    color:var(--text-muted); text-transform:uppercase; letter-spacing:0.1em;
-  }
-
-  /* Combo-hit badge in lead detail */
-  .combo-badge {
-    display:inline-block; padding:3px 9px; margin:3px 4px 0 0;
-    border-radius:12px; font-size:10px; font-weight:700;
-    background:linear-gradient(90deg, #8b5cf6, #d4af37); color:#fff;
-    text-transform:uppercase; letter-spacing:0.05em;
-  }
-
-  /* ---------- Help icon (top-right, persistent) ---------- */
-  .help-btn {
-    position:fixed; top:72px; right:18px; z-index:9000;
-    width:36px; height:36px; border-radius:50%;
-    background:var(--bg-panel); border:1px solid var(--accent);
-    color:var(--accent); font-family:"Fraunces",serif; font-size:18px; font-weight:700;
-    cursor:pointer; display:grid; place-items:center;
-    transition: all .15s ease; box-shadow: 0 4px 14px rgba(0,0,0,.35);
-  }
-  .help-btn:hover { background:var(--accent); color:#0b1220; transform: scale(1.08); }
-
-  /* ---------- Welcome / help modal ---------- */
-  .modal-backdrop {
-    position:fixed; inset:0; background:rgba(0,0,0,.72); z-index:9500;
-    display:flex; align-items:center; justify-content:center;
-    opacity:0; pointer-events:none; transition:opacity .2s ease;
-  }
-  .modal-backdrop.visible { opacity:1; pointer-events:auto; }
-  .modal {
-    background:linear-gradient(180deg, #111d33, #0b1220);
-    border:1px solid var(--accent-dim); border-radius:8px;
-    width:520px; max-width:92vw; max-height:82vh; overflow-y:auto;
-    padding:26px 32px; box-shadow:0 22px 60px rgba(0,0,0,.6);
-  }
-  .modal h2 {
-    font-family:"Fraunces",serif; font-size:22px; color:var(--accent); margin:0 0 6px;
-  }
-  .modal .sub { font-size:11.5px; color:var(--text-muted); letter-spacing:.14em;
-                text-transform:uppercase; margin-bottom:18px; }
-  .modal h3 {
-    font-size:11px; color:var(--accent); letter-spacing:.14em; text-transform:uppercase;
-    margin:18px 0 6px; font-weight:700;
-  }
-  .modal p, .modal li { font-size:13px; line-height:1.55; color:var(--text); margin:6px 0; }
-  .modal ul { padding-left:18px; margin:4px 0 10px; }
-  .modal .tier-chip {
-    display:inline-block; padding:2px 7px; border-radius:10px; font-size:10.5px;
-    font-weight:700; letter-spacing:.08em; font-family:"JetBrains Mono",monospace;
-    border:1px solid; margin-right:4px;
-  }
-  .modal .tier-chip.hot    { background:rgba(239,68,68,.12);  border-color:rgba(239,68,68,.55); color:#f87171; }
-  .modal .tier-chip.strong { background:rgba(212,175,55,.12); border-color:rgba(212,175,55,.55); color:#d4af37; }
-  .modal .tier-chip.likely { background:rgba(234,179,8,.08);  border-color:rgba(234,179,8,.45); color:#eab308; }
-  .modal .tier-chip.watch  { background:rgba(148,163,184,.08); border-color:rgba(148,163,184,.35); color:#94a3b8; }
-  .modal .actions { display:flex; gap:10px; margin-top:22px; justify-content:flex-end; }
-  .modal .btn-x {
-    padding:9px 18px; border:1px solid var(--accent); background:var(--accent); color:#0b1220;
-    border-radius:4px; cursor:pointer; font-size:11px; font-weight:700;
-    text-transform:uppercase; letter-spacing:.12em;
-  }
-  .modal .btn-x.secondary { background:transparent; color:var(--text-muted); border-color:var(--border); }
-  .modal .btn-x:hover { opacity:.85; }
-
-  /* ---------- Playbook-hint banner on active filter ---------- */
-  .hint-banner {
-    padding:10px 18px; background:var(--accent-soft); border-bottom:1px solid var(--accent-dim);
-    font-size:12px; color:var(--text); display:none; align-items:center; gap:10px;
-  }
-  .hint-banner.visible { display:flex; }
-  .hint-banner .emoji { font-size:16px; }
-  .hint-banner .dismiss {
-    margin-left:auto; cursor:pointer; font-size:18px; color:var(--text-muted);
-    background:none; border:none; padding:0 4px;
-  }
-  .hint-banner .dismiss:hover { color:var(--text); }
-  .loader .hint { margin-top:10px; color:var(--text-muted); font-size:11px; }
-  .loader.hidden { display:none; }
-
-  /* ---------- Tax roll uploader modal ---------- */
-  .modal-overlay {
-    position:fixed; inset:0; background:rgba(8,12,22,0.85); z-index:5000;
-    display:none; align-items:center; justify-content:center; padding:40px;
-  }
-  .modal-overlay.open { display:flex; }
-  .modal {
-    background:var(--bg-panel); border:1px solid var(--accent); border-radius:6px;
-    max-width:900px; width:100%; max-height:90vh; overflow-y:auto;
-    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
-  }
-  .modal-head {
-    padding:18px 22px; border-bottom:1px solid var(--border);
-    display:flex; justify-content:space-between; align-items:center;
-    background:linear-gradient(180deg, #0e1628, var(--bg-panel));
-  }
-  .modal-head h2 {
-    font-family:"Fraunces", serif; font-size:20px; margin:0;
-  }
-  .modal-head .close {
-    cursor:pointer; color:var(--text-muted); font-size:20px; background:none; border:none;
-  }
-  .modal-head .close:hover { color:var(--text); }
-  .modal-body { padding:22px; }
-
-  .dropzone {
-    border:2px dashed var(--border); border-radius:6px; padding:40px;
-    text-align:center; cursor:pointer; transition:all 0.15s ease;
-    background:var(--bg-elev);
-  }
-  .dropzone:hover, .dropzone.dragging {
-    border-color:var(--accent); background:var(--accent-soft);
-  }
-  .dropzone .big { font-family:"Fraunces",serif; font-size:24px; color:var(--accent); }
-  .dropzone .small { color:var(--text-muted); font-size:11px; margin-top:8px; }
-  .dropzone input[type="file"] { display:none; }
-
-  .mapping {
-    margin-top:24px; display:none;
-  }
-  .mapping.visible { display:block; }
-  .mapping h3 {
-    font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
-    color:var(--accent); margin:0 0 12px; border-bottom:1px solid var(--border);
-    padding-bottom:6px;
-  }
-  .mapping-grid {
-    display:grid; grid-template-columns: 200px 1fr 100px; gap:8px 16px;
-    align-items:center; font-size:12px;
-  }
-  .mapping-grid .target { color:var(--text); font-weight:700; }
-  .mapping-grid .required { color:var(--accent); }
-  .mapping-grid select {
-    background:var(--bg-elev); border:1px solid var(--border);
-    padding:6px 8px; border-radius:3px; color:var(--text); font-family:"JetBrains Mono",monospace;
-    font-size:11px;
-  }
-  .mapping-grid select:focus { outline:none; border-color:var(--accent); }
-  .mapping-grid .match-ind {
-    font-size:10px; text-align:right; color:var(--text-muted);
-  }
-  .mapping-grid .match-ind.matched { color:var(--ok); }
-
-  .preview-section { margin-top:24px; display:none; }
-  .preview-section.visible { display:block; }
-  .preview-section h3 {
-    font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
-    color:var(--accent); margin:0 0 12px; border-bottom:1px solid var(--border);
-    padding-bottom:6px;
-  }
-  .preview-table {
-    max-height:300px; overflow:auto; border:1px solid var(--border); border-radius:4px;
-  }
-  .preview-table table { font-size:11px; }
-  .preview-table th { background:var(--bg-panel); font-size:9.5px; padding:6px 8px; }
-  .preview-table td { padding:5px 8px; }
-  .preview-stats {
-    display:flex; gap:20px; margin-top:10px; font-size:11px; color:var(--text-muted);
-  }
-  .preview-stats strong { color:var(--accent); font-family:"Fraunces",serif; font-size:15px; }
-
-  .modal-actions {
-    padding:14px 22px; border-top:1px solid var(--border);
-    display:flex; gap:8px; justify-content:flex-end; background:var(--bg-panel);
-    position:sticky; bottom:0;
-  }
-
-
-  @media (max-width: 1280px) {
-    main { grid-template-columns: 260px 1fr 340px; }
-  }
-  @media (max-width: 980px) {
-    main { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
-    aside.filters, aside.detail { max-height:none; }
-    section.center { grid-template-rows: 400px 300px; }
-  }
+  /* detail */
+  .detail { border-left:1px solid var(--border); overflow-y:auto; padding:18px; background:var(--bg-panel); }
+  .detail h2 { font-size:16px; margin:0 0 3px; }
+  .detail .sub { color:var(--text-dim); font-size:12px; margin-bottom:14px; }
+  .sec { margin:14px 0; }
+  .sec h4 { font-size:10px; text-transform:uppercase; letter-spacing:.6px; color:var(--text-muted); margin:0 0 7px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:12px; }
+  .kv .k { color:var(--text-muted); } .kv .v { text-align:right; word-break:break-word; }
+  .empty { color:var(--text-muted); text-align:center; padding:50px 20px; }
+  .annpill { display:inline-block; padding:2px 8px; margin:2px; border-radius:10px; background:rgba(245,158,11,.14); color:var(--warn); font-size:11px; }
+  .btn { padding:7px 12px; background:var(--accent); color:#fff; border:none; border-radius:5px; cursor:pointer; font-size:12px; font-weight:600; }
+  .btn.ghost { background:transparent; border:1px solid var(--border); color:var(--text-dim); }
+  .btn:hover { box-shadow:var(--glow-blue); }
+  .exports { display:flex; gap:6px; padding:8px 14px; border-top:1px solid var(--border); }
+  #loader { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:var(--bg); z-index:99; }
 </style>
-</head>
-<body>
-
-<!-- Persistent help button -->
-<button class="help-btn" id="help-btn" title="Show welcome tour">?</button>
-
-<!-- Welcome modal (shown first visit) -->
-<div class="modal-backdrop" id="welcome-modal">
-  <div class="modal">
-    <h2>Welcome to your Lead Desk</h2>
-    <div class="sub">Motivated seller intelligence — Maricopa &amp; Pima County</div>
-
-    <h3>What the tiers mean</h3>
-    <p>
-      <span class="tier-chip hot">🔥 HOT</span> Call today — multiple distress signals stacked<br>
-      <span class="tier-chip strong">💎 STRONG</span> Call this week — strong single signal<br>
-      <span class="tier-chip likely">⚡ LIKELY</span> Add to drip — flags suggest motivation<br>
-      <span class="tier-chip watch">👀 WATCH</span> Keep in your database for later
-    </p>
-
-    <h3>How to work it</h3>
-    <ul>
-      <li><b>Click any lead row</b> to open full details, deal math, and comp tools on the right.</li>
-      <li><b>Filter the list</b> using the Signal Types and Core Flags on the left sidebar.</li>
-      <li><b>Switch counties</b> with the tabs above the table.</li>
-      <li><b>Export a CSV</b> for your dialer or mail campaign anytime using the button in the top bar.</li>
-    </ul>
-
-    <h3>Where the data comes from</h3>
-    <p>Public records: Maricopa County Assessor + Recorder, Pima County Assessor. Refreshes weekly. No MLS, no paid feeds.</p>
-
-    <div class="actions">
-      <button class="btn-x secondary" id="modal-skip">Skip for now</button>
-      <button class="btn-x" id="modal-got-it">Got it, let's go</button>
-    </div>
-  </div>
-</div>
-
-<!-- Hint banner (appears on first filter interaction) -->
-<div class="hint-banner" id="hint-banner">
-  <span class="emoji">💡</span>
-  <span id="hint-text">Tip: click any lead row to see full property details, equity math, and a call-script angle on the right panel.</span>
-  <button class="dismiss" id="hint-dismiss" title="Dismiss">×</button>
-</div>
 
 <div class="app">
-
-  <!-- HEADER -->
   <header>
-    <div class="brand">
-      <h1>Maricopa <span class="dot">+</span> Pima Intel</h1>
-      <span class="sub">Motivated Seller Lead Desk</span>
-    </div>
-    <div class="global-search-wrap">
-      <span class="global-search-icon">🔎</span>
-      <input type="search" class="global-search" id="global-search"
-             placeholder="Search APN, owner name, or address…"
-             autocomplete="off" spellcheck="false" />
-      <div class="global-autocomplete" id="global-autocomplete"></div>
-    </div>
+    <div class="brand">Recorded Document Intel <span class="dot">·</span> Maricopa + Pima</div>
     <div class="kpis">
-      <div class="kpi"><div class="val" id="kpi-totalall">—</div><div class="lbl">Total Pool</div></div>
-      <div class="kpi"><div class="val" id="kpi-total">—</div><div class="lbl">In View</div></div>
-      <div class="kpi"><div class="val" id="kpi-new">—</div><div class="lbl">🎯 New</div></div>
-      <div class="kpi"><div class="val" id="kpi-updated">—</div><div class="lbl">Updated</div></div>
-      <div class="kpi live-kpi"><span class="live-dot"></span><span class="live-text">LIVE</span></div>
+      <div class="kpi"><div class="v" id="k-total">—</div><div class="l">Documents</div></div>
+      <div class="kpi"><div class="v mar" id="k-mar">—</div><div class="l">Maricopa</div></div>
+      <div class="kpi"><div class="v pima" id="k-pima">—</div><div class="l">Pima</div></div>
+      <div class="kpi"><div class="v" id="k-resolved">—</div><div class="l">Resolved</div></div>
+      <div class="kpi"><div class="v" id="k-fresh">—</div><div class="l">New (7d)</div></div>
+      <div class="kpi"><div class="v" id="k-range" style="font-size:12px">—</div><div class="l">Date range</div></div>
     </div>
   </header>
 
-  <!-- Quick Lists strip -->
-  <div class="quicklists-strip" id="quicklists-strip">
-    <div class="ql-tile" data-ql="all">
-      <span class="ql-icon">📊</span>
-      <span class="ql-count" id="ql-count-all">—</span>
-      <span class="ql-label">All Leads</span>
-    </div>
-    <div class="ql-tile new-leads" data-ql="new">
-      <span class="ql-icon">🎯</span>
-      <span class="ql-count" id="ql-count-new">—</span>
-      <span class="ql-label">Today's Pima Picks</span>
-      <span class="ql-sublabel" id="ql-sublabel-new" style="font-size:9px;color:var(--text-dim);margin-top:2px;">Refreshes 3am MST</span>
-    </div>
-    <div class="ql-tile" data-ql="preforeclosure">
-      <span class="ql-icon">🔥</span>
-      <span class="ql-count" id="ql-count-preforeclosure">—</span>
-      <span class="ql-label">Pre-Foreclosure</span>
-    </div>
-    <div class="ql-tile" data-ql="estate">
-      <span class="ql-icon">👑</span>
-      <span class="ql-count" id="ql-count-estate">—</span>
-      <span class="ql-label">Estate / Probate</span>
-    </div>
-    <div class="ql-tile" data-ql="taxlien">
-      <span class="ql-icon">💰</span>
-      <span class="ql-count" id="ql-count-taxlien">—</span>
-      <span class="ql-label">Tax Lien</span>
-    </div>
-    <div class="ql-tile" data-ql="absentee_equity">
-      <span class="ql-icon">🏢</span>
-      <span class="ql-count" id="ql-count-absentee_equity">—</span>
-      <span class="ql-label">Tired OOS Landlord</span>
-    </div>
-    <div class="ql-tile" data-ql="high_equity">
-      <span class="ql-icon">💎</span>
-      <span class="ql-count" id="ql-count-high_equity">—</span>
-      <span class="ql-label">High Equity</span>
-    </div>
-    <div class="ql-tile" data-ql="stacked">
-      <span class="ql-icon">⚡</span>
-      <span class="ql-count" id="ql-count-stacked">—</span>
-      <span class="ql-label">Stacked 2+</span>
+  <div class="tabsbar">
+    <div class="tab active" data-county="all">All Counties <span class="c" id="tc-all"></span></div>
+    <div class="tab" data-county="Maricopa">Maricopa <span class="c" id="tc-mar"></span></div>
+    <div class="tab" data-county="Pima">Pima <span class="c" id="tc-pima"></span></div>
+    <div class="quick">
+      <div class="tab" id="q-fresh">🟢 New last 7d</div>
+      <div class="tab" id="q-foreclosure">🔥 Active foreclosures</div>
+      <div class="tab" id="q-unresolved">⚠ Unresolved</div>
     </div>
   </div>
 
-  <!-- County Tab Bar -->
-  <div class="county-tabs">
-    <div class="county-tab active" data-tab="all">📊 All Counties <span class="tab-count" id="tab-count-all">—</span></div>
-    <div class="county-tab" data-tab="Maricopa">🏜️ Maricopa (Phoenix Metro) <span class="tab-count" id="tab-count-maricopa">—</span></div>
-    <div class="county-tab" data-tab="Pima">🌵 Pima (Tucson) <span class="tab-count" id="tab-count-pima">—</span></div>
-  </div>
-
-  <!-- MAIN -->
   <main>
-    <!-- Filters -->
-    <aside class="filters">
-      <div class="filter-group">
-        <h3>Search</h3>
-        <input type="search" id="f-search" placeholder="APN, owner, address…" />
+    <aside>
+      <h3>Search</h3>
+      <input class="fld" id="f-search" placeholder="APN, owner, name, doc #…" />
+      <h3>Recording date</h3>
+      <div class="daterow"><input class="fld" id="f-from" type="date" title="From" /><input class="fld" id="f-to" type="date" title="To" /></div>
+      <h3>Resolution</h3>
+      <select class="fld" id="f-resolved">
+        <option value="all">All documents</option>
+        <option value="resolved">Resolved to a parcel</option>
+        <option value="unresolved">Unresolved (name only)</option>
+      </select>
+      <h3>Annotations</h3>
+      <div class="annrow" id="f-ann">
+        <span class="ann" data-ann="absentee">Absentee</span>
+        <span class="ann" data-ann="out_of_state">Out of state</span>
+        <span class="ann" data-ann="long_hold">10+ yr hold</span>
       </div>
-
-      <div class="filter-group">
-        <h3>Signal Types</h3>
-        <div class="chip-row" id="f-signals"></div>
-      </div>
-
-      <div class="filter-group">
-        <h3>Property Type</h3>
-        <div class="chip-row" id="f-proptype">
-          <span class="chip" data-val="sfr">🏠 SFR</span>
-          <span class="chip" data-val="townhome_condo">🏘️ Condo/TH</span>
-          <span class="chip" data-val="mobile_home">🚐 Mobile</span>
-          <span class="chip" data-val="multifamily_2_4">🏢 2-4 unit</span>
-          <span class="chip" data-val="multifamily_5_20">🏬 5-20 unit</span>
-          <span class="chip" data-val="multifamily_20p">🏙️ 20+ unit</span>
-          <span class="chip" data-val="vacant_land">🌾 Vacant</span>
-          <span class="chip" data-val="rural_acreage">🌵 Rural</span>
-          <span class="chip" data-val="commercial">🏪 Commercial</span>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <h3>🎯 Deal Intent</h3>
-        <div class="chip-row" id="f-intent">
-          <span class="chip" data-val="foreclosure_risk">🔥 Foreclosure Risk</span>
-          <span class="chip" data-val="lawsuit_risk">⚖️ Lawsuit Risk</span>
-          <span class="chip" data-val="lien_pressure">💰 Lien Pressure</span>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <h3>Core Flags</h3>
-        <div class="chip-row" id="f-flags">
-          <span class="chip" data-val="absentee">Absentee</span>
-          <span class="chip" data-val="out_of_state">Out of State</span>
-          <span class="chip" data-val="estate_owner">Estate / Heirs</span>
-          <span class="chip" data-val="family_trust">Family Trust</span>
-          <span class="chip" data-val="likely_vacant">Likely Vacant</span>
-          <span class="chip" data-val="likely_foreclosure">Likely Foreclosure</span>
-          <span class="chip" data-val="long_hold">10+ yr hold</span>
-          <span class="chip" data-val="hide_cash_buyer">Hide LLC / Inc</span>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <h3>Distress</h3>
-        <div class="chip-row" id="f-distress">
-          <span class="chip" data-val="equity_gap_high">High Equity Gap</span>
-          <span class="chip" data-val="negative_equity">Underwater</span>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <h3>Life Event</h3>
-        <div class="chip-row" id="f-lifeevent">
-          <span class="chip" data-val="widow_indicator">Widow / Surv.</span>
-          <span class="chip" data-val="multi_owner_inheritance">Heirs / Multi</span>
-          <span class="chip" data-val="care_of_address">C/O Address</span>
-          <span class="chip" data-val="corporate_dissolved">Dormant LLC</span>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <h3>Holding Pattern</h3>
-        <div class="chip-row" id="f-holding">
-          <span class="chip" data-val="tired_landlord">Tired Landlord</span>
-          <span class="chip" data-val="accidental_landlord">Accidental LL</span>
-          <span class="chip" data-val="mailing_to_pobox">PO Box Mail</span>
-          <span class="chip" data-val="out_of_country">Out of Country</span>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <h3>Value Play</h3>
-        <div class="chip-row" id="f-value">
-          <span class="chip" data-val="cash_flow_candidate">Cash Flow</span>
-          <span class="chip" data-val="teardown_candidate">Teardown</span>
-          <span class="chip" data-val="hurricane_equity">Mega Equity</span>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <h3>Portfolio</h3>
-        <div class="chip-row" id="f-portfolio">
-          <span class="chip" data-val="bulk_owner_3plus">3+ Parcels</span>
-          <span class="chip" data-val="bulk_owner_10plus">10+ Parcels</span>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <h3>Sale Velocity</h3>
-        <div class="chip-row" id="f-velocity">
-          <span class="chip" data-val="never_sold">Never Sold</span>
-          <span class="chip" data-val="recent_underprice_sale">Under-Priced Sale</span>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <h3>Min Tier</h3>
-        <div class="chip-row" id="f-tier">
-          <span class="chip" data-val="any">Any</span>
-          <span class="chip" data-val="watch">👀 Watch+</span>
-          <span class="chip" data-val="likely">⚡ Likely+</span>
-          <span class="chip" data-val="strong">💎 Strong+</span>
-          <span class="chip" data-val="hot">🔥 Hot only</span>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <h3>Min Equity ($)</h3>
-        <div class="slider-row"><span>0</span><span class="val" id="f-eq-val">0</span><span>500k</span></div>
-        <input type="range" id="f-equity" min="0" max="500000" value="0" step="10000" />
-      </div>
-
-      <div class="filter-group">
-        <h3>Tax Roll Import</h3>
-        <div class="btn-row">
-          <button class="btn primary" id="btn-upload" style="width:100%">↑ Upload Tax Roll CSV</button>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <h3>Export</h3>
-        <div class="btn-row">
-          <button class="btn primary" id="btn-skip">Skip Trace CSV</button>
-          <button class="btn primary" id="btn-ghl">GHL CSV</button>
-          <button class="btn" id="btn-json">JSON</button>
-        </div>
-      </div>
+      <h3>Document type</h3>
+      <div id="f-doctypes"></div>
     </aside>
 
-    <!-- Center: table + map -->
-    <section class="center" id="center-section">
-      <div class="table-wrap">
-        <table id="tbl">
-          <thead>
-            <tr>
-              <th data-sort="stack_count">Tier <span class="sort-arrow">▼</span></th>
-              <th data-sort="county">Co.</th>
-              <th data-sort="stack_count">Stack</th>
-              <th data-sort="stack_count">Distress Patterns</th>
-              <th data-sort="site_address">Property</th>
-              <th data-sort="owner">Owner</th>
-              <th data-sort="equity_est">Equity</th>
-              <th data-sort="year_built">Built</th>
-            </tr>
-          </thead>
+    <div class="center">
+      <div class="tbar"><span id="foot">—</span>
+        <button class="btn ghost" id="ex-skip" style="margin-left:auto;padding:3px 10px;font-size:11px">Skip Trace CSV</button>
+        <button class="btn ghost" id="ex-ghl" style="padding:3px 10px;font-size:11px">GHL CSV</button>
+        <span id="sortlbl"></span></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th data-sort="recorded_date">Recorded ▼</th>
+            <th data-sort="doc_type">Document Type</th>
+            <th data-sort="county">Co.</th>
+            <th data-sort="owner">Property / Owner</th>
+            <th data-sort="_party">Parties</th>
+          </tr></thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
-      <div class="map-bar" id="map-toggle">
-        <span>🗺  Map View <span id="map-count" style="margin-left:8px; color:var(--text-muted); letter-spacing:0; text-transform:none;"></span></span>
-        <span class="map-toggle-icon">▲</span>
-      </div>
-      <div class="map-pane"><div id="map" style="width:100%; height:100%;"></div></div>
-    </section>
+    </div>
 
-    <!-- Detail + calculator -->
-    <aside class="detail" id="detail">
-      <div class="empty-detail">Select a lead to view details and run deal math</div>
-    </aside>
+    <div class="detail" id="detail"><div class="empty">Select a document to see full detail and enrichment.</div></div>
   </main>
-
-  <!-- FOOTER -->
-  <footer>
-    <span id="foot-count">0 leads shown</span>
-    <span>Infinity Cash Offer · Built on public records · Data updates nightly when wired to GH Actions</span>
-  </footer>
 </div>
 
-<!-- TAX ROLL UPLOADER MODAL -->
-<div class="modal-overlay" id="upload-modal">
-  <div class="modal">
-    <div class="modal-head">
-      <h2>Tax Roll Import</h2>
-      <button class="close" id="upload-close">×</button>
-    </div>
-    <div class="modal-body">
+<div id="loader"><div style="text-align:center"><div style="font-size:20px;color:var(--accent)">◐</div><div style="color:var(--text-muted);margin-top:8px">loading documents…</div></div></div>
 
-      <div class="dropzone" id="dropzone">
-        <div class="big">Drop tax roll CSV here</div>
-        <div class="small">or click to browse · accepts .csv / .tsv · all processing happens in your browser, nothing is uploaded</div>
-        <input type="file" id="file-input" accept=".csv,.tsv,text/csv" />
-      </div>
-
-      <div class="mapping" id="mapping">
-        <h3>Column Mapping</h3>
-        <div style="font-size:11px; color:var(--text-muted); margin-bottom:12px">
-          We auto-detected your column headers. Override any mapping using the dropdowns.
-          Required fields marked in gold.
-        </div>
-        <div class="mapping-grid" id="mapping-grid"></div>
-
-        <div style="margin-top:16px;">
-          <label style="font-size:11px; color:var(--text-muted);">
-            <input type="checkbox" id="merge-mode" style="accent-color:var(--accent); margin-right:6px" checked>
-            Merge into intel as <span style="color:var(--accent); font-weight:700">Tax Delinquent</span> signal (joins by APN to existing parcel master)
-          </label>
-        </div>
-        <div style="margin-top:10px;">
-          <label style="font-size:11px; color:var(--text-muted);">County:
-            <select id="upload-county" style="background:var(--bg-elev); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:3px; margin-left:6px;">
-              <option value="Maricopa">Maricopa</option>
-              <option value="Pima">Pima</option>
-              <option value="Both">Both / Auto-detect by APN format</option>
-            </select>
-          </label>
-        </div>
-      </div>
-
-      <div class="preview-section" id="preview">
-        <h3>Cleaned Preview</h3>
-        <div class="preview-table">
-          <table>
-            <thead id="preview-thead"></thead>
-            <tbody id="preview-tbody"></tbody>
-          </table>
-        </div>
-        <div class="preview-stats">
-          <span>Rows: <strong id="stat-rows">0</strong></span>
-          <span>With APN: <strong id="stat-apn">0</strong></span>
-          <span>With mailing address: <strong id="stat-mail">0</strong></span>
-          <span>Total $ owed: <strong id="stat-owed">$0</strong></span>
-        </div>
-      </div>
-
-    </div>
-    <div class="modal-actions">
-      <button class="btn" id="upload-clear" style="display:none">Clear</button>
-      <button class="btn primary" id="upload-download" style="display:none">Download Clean CSV</button>
-      <button class="btn primary" id="upload-merge" style="display:none">Merge into Leads</button>
-    </div>
-  </div>
-</div>
-
-<!-- LOADER -->
-<div class="loader" id="loader">
-  <div style="text-align:center">
-    <div class="wave">loading motivated sellers…</div>
-    <div class="hint">reading data/leads.json</div>
-  </div>
-</div>
-
-<script src="https://unpkg.com/[email protected]/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<!-- Leaflet loaded from head (cdnjs) — kept fallback reference removed -->
 <script>
-/* ============================================================
-   State
-   ============================================================ */
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const CAT_ORDER = ["Foreclosure","Tax & Liens","Estate","Legal","Transfers","Other"];
+const catVar = c => c==="Tax & Liens" ? "--cat-Tax" : (["Foreclosure","Estate","Legal","Transfers"].includes(c)?`--cat-${c}`:"--cat-Other");
+const fmtN = n => (n||0).toLocaleString();
+const fmtM = v => v==null||v===""?"—":"$"+Math.round(+v).toLocaleString();
+
 const state = {
-  leads: [],
-  filtered: [],
-  selectedId: null,
-  generatedAt: null,        // ISO timestamp of current build
-  prevGeneratedAt: null,    // previous build timestamp (for NEW detection)
-  filters: {
-    activeTab:    "all",  // "all" | "Maricopa" | "Pima"
-    quickList:    "all",  // "all" | "new" | "preforeclosure" | ...
-    intent:       new Set(),   // "foreclosure_risk" | "lawsuit_risk" | "lien_pressure"
-    signals:      new Set(),
-    flags:        new Set(),
-    propertyTypes: new Set(),
-    distress:     new Set(),
-    lifeEvent:    new Set(),
-    holding:      new Set(),
-    valuePlay:    new Set(),
-    portfolio:    new Set(),
-    velocity:     new Set(),
-    minScore: 0,
-    minTier: "any",
-    minEquity: 0,
-    search: "",
-  },
-  sort: { key: "score", dir: -1 },
-  map: null,
-  markers: null,
-  calcMode: "wholesale",
+  leads:[], filtered:[], sel:null,
+  meta:{},
+  sort:{key:"recorded_date", dir:-1},
+  f:{ county:"all", docTypes:new Set(), from:"", to:"", resolved:"all",
+      ann:new Set(), fresh:false, foreclosure:false, unresolved:false, search:"" }
 };
 
-const $  = sel => document.querySelector(sel);
-const $$ = sel => Array.from(document.querySelectorAll(sel));
-const fmt = n => n == null ? "—" : (typeof n === "number" ? n.toLocaleString() : String(n));
-const fmtM = n => !n ? "—" : "$" + Math.round(n).toLocaleString();
-
-// Property type metadata (mirrors Python PROPERTY_TYPES dict in enrich_leads.py)
-const PROP_TYPES = {
-  sfr:              { label: "Single Family",    icon: "🏠" },
-  townhome_condo:   { label: "Townhome / Condo", icon: "🏘️" },
-  mobile_home:      { label: "Mobile Home",      icon: "🚐" },
-  multifamily_2_4:  { label: "Multifamily 2-4",  icon: "🏢" },
-  multifamily_5_20: { label: "Multifamily 5-20", icon: "🏬" },
-  multifamily_20p:  { label: "Multifamily 20+",  icon: "🏙️" },
-  vacant_land:      { label: "Vacant Land",      icon: "🌾" },
-  rural_acreage:    { label: "Rural Acreage",    icon: "🌵" },
-  commercial:       { label: "Commercial",       icon: "🏪" },
-  industrial:       { label: "Industrial",       icon: "🏭" },
-  agricultural:     { label: "Agricultural",     icon: "🚜" },
-  other:            { label: "Other",            icon: "❓" },
-};
-
-// Distress pattern metadata — one per pattern, each gets a colored badge
-const PATTERN_META = {
-  "Foreclosure":    { emoji: "🔥", cls: "pat-foreclosure" },
-  "Tax Pressure":   { emoji: "💰", cls: "pat-tax" },
-  "Estate":         { emoji: "👑", cls: "pat-estate" },
-  "Legal":          { emoji: "⚖️", cls: "pat-legal" },
-  "Vacancy":        { emoji: "🏚️", cls: "pat-vacancy" },
-  "Tired Landlord": { emoji: "🏢", cls: "pat-landlord" },
-};
-
-// Friendly labels for every flag — shown in the "Why HOT?" tooltip
-const FLAG_LABELS = {
-  // Legacy core flags
-  estate_owner:              "Estate / Heirs owner",
-  entity_owner:              "LLC / Corp owner",
-  family_trust:              "Family Trust owner",
-  absentee:                  "Absentee owner (lives elsewhere)",
-  out_of_state:              "Out-of-state owner",
-  long_hold:                 "Held 10+ years",
-  // Enrichment — distress
-  equity_gap_high:           "Huge equity gap vs. purchase",
-  negative_equity:           "Underwater (paid > current value)",
-  // Enrichment — life event
-  widow_indicator:           "Widow / surviving spouse",
-  multi_owner_inheritance:   "Heirs / multiple owners on deed",
-  care_of_address:           "Mail goes via C/O (attorney / trustee)",
-  corporate_dissolved:       "Dormant LLC / entity",
-  likely_vacant:             "Likely vacant (long hold + out-of-state)",
-  // Enrichment — holding pattern
-  tired_landlord:            "Tired landlord (absentee multifamily)",
-  accidental_landlord:       "Accidental landlord (recent absentee)",
-  mailing_to_pobox:          "Mails to a PO Box (avoids physical addr)",
-  out_of_country:            "Out-of-country owner",
-  // Enrichment — value
-  cash_flow_candidate:       "Cash-flow candidate (2-4 unit, older)",
-  teardown_candidate:        "Teardown (land worth > house)",
-  hurricane_equity:          "Massive equity + old build",
-  // Enrichment — portfolio
-  bulk_owner_3plus:          "Owns 3+ parcels",
-  bulk_owner_10plus:         "Owns 10+ parcels",
-  // Enrichment — velocity
-  never_sold:                "Never sold (generational / inherited)",
-  recent_underprice_sale:    "Recent below-market sale (distressed)",
-};
-
-// Call-angle copy — leads.json ships only the tag; headline/pitch live here
-const CALL_ANGLE_COPY = {
-  "pre-foreclosure": { headline: "🔥 Pre-Foreclosure — auction in ~90 days",
-    pitch: "You can buy before it hits their credit. Fast cash close, no showings, walk-away money." },
-  "estate":          { headline: "👑 Estate / Probate filing",
-    pitch: "Inherited property — pitch buying as-is so the heirs settle the estate without cleanup, repairs, or showings." },
-  "tax-lien":        { headline: "💰 Tax Lien — owner behind",
-    pitch: "Cash offer covers the lien and leaves them walk-away money. Works for retired fixed-income owners especially." },
-  "lis-pendens":     { headline: "⚖️ Lawsuit pending on title",
-    pitch: "Title issue is delaying sale. You bring a buyer who can clear through closing escrow." },
-  "judgment":        { headline: "⚖️ Judgment against owner",
-    pitch: "Selling the property clears the judgment. Cash close + lien payoff = exit strategy." },
-  "violation":       { headline: "🏚️ Code violation on file",
-    pitch: "Owner avoiding city fines. Pitch: we buy as-is, handle the violations, you walk away clean." },
-  "tired-landlord":  { headline: "🏢 Tired Landlord — long-held rental",
-    pitch: "Done with tenants? Cash offer, 14-day close, no showings, no repairs, no tenant stress." },
-  "oos-equity":      { headline: "📍 Out-of-State Owner — big equity",
-    pitch: "Remote ownership + stacking equity. Pitch: cash out without the cross-country hassle." },
-  "estate-owner":    { headline: "📜 Estate-owned",
-    pitch: "Owner listed as 'ESTATE OF' — usually means family dispute or administrator burnout. Offer simplicity." },
-  "multi-heir":      { headline: "👥 Inherited by multiple heirs",
-    pitch: "Joint ownership complicates sale; pitch a clean single-buyer cash offer, they split cleanly at close." },
-  "corp-dissolved":  { headline: "🏚️ LLC dissolved but still owns",
-    pitch: "Abandoned asset. Track down managers and offer cash exit — they often forgot they own it." },
-  "absentee":        { headline: "📬 Absentee owner",
-    pitch: "Mailing address ≠ site. Pitch: stop dealing with it remotely — cash out, we handle everything." },
-  "high-equity":     { headline: "💎 Deep equity, long hold",
-    pitch: "Tap equity without listing. Clean all-cash offer, two-week close." },
-  "generic":         { headline: "📞 Qualified prospect",
-    pitch: "Use the flags and signals on this lead to tailor your opener." },
-};
-
-// Score tier system — maps raw scores to plain-English labels
-function scoreTier(score, equity, signalCount, combos, leadObj) {
-  // Prefer backend-assigned tier (based on distress pattern stacking).
-  // Falls back to stack count for legacy rendering calls.
-  const l = leadObj || {};
-  const stacks = l.stack_count != null ? l.stack_count : (signalCount || 0);
-  const backendTier = l.tier;
-  if (backendTier) {
-    const map = {
-      hot:    { key: "hot",    emoji: "🔥", label: "HOT",    desc: `${stacks}-stack distress — call today` },
-      strong: { key: "strong", emoji: "💎", label: "STRONG", desc: `${stacks}-stack — call this week` },
-      likely: { key: "likely", emoji: "⚡", label: "LIKELY", desc: `${stacks}-stack — add to drip` },
-      watch:  { key: "watch",  emoji: "👀", label: "WATCH",  desc: "Single signal — keep in database" },
-      cold:   { key: "cold",   emoji: "",   label: "COLD",   desc: "No distress patterns" },
-    };
-    return map[backendTier] || map.cold;
-  }
-  // Fallback (pre-v3 leads.json without pattern data)
-  if (stacks >= 4) return { key: "hot",    emoji: "🔥", label: "HOT",    desc: "4+ stacked patterns" };
-  if (stacks === 3) return { key: "strong", emoji: "💎", label: "STRONG", desc: "3 stacked patterns" };
-  if (stacks === 2) return { key: "likely", emoji: "⚡", label: "LIKELY", desc: "2 patterns" };
-  if (stacks === 1) return { key: "watch",  emoji: "👀", label: "WATCH",  desc: "Single signal" };
-  return { key: "cold", emoji: "", label: "COLD", desc: "No patterns" };
-}
-
-// Collect all firing flags on a lead as friendly-labeled list
-function leadFlagReasons(lead) {
-  const out = [];
-  const lf = lead.legacy_flags || {};
-  const ef = lead.enrichment_flags || {};
-  for (const [k, v] of Object.entries(lf)) {
-    if (v && FLAG_LABELS[k]) out.push(FLAG_LABELS[k]);
-  }
-  for (const [k, v] of Object.entries(ef)) {
-    if (v && FLAG_LABELS[k]) out.push(FLAG_LABELS[k]);
-  }
-  // equity bonus is implicit — surface it if significant
-  if ((lead.equity_est || 0) >= 500000) out.push("Mega equity ($500k+)");
-  else if ((lead.equity_est || 0) >= 300000) out.push("High equity ($300k+)");
-  // Signal stacking
-  if ((lead.signal_count || 0) >= 2) out.push(`${lead.signal_count} stacked signals`);
-  return out;
-}
-
-/* ============================================================
-   Data loading
-   ============================================================ */
-// ============================================================================
-// UI POLISH — collapsible map, welcome modal, help button, filter hints
-// ============================================================================
-function initUiPolish() {
-  const centerSec = document.getElementById("center-section");
-  const mapToggle = document.getElementById("map-toggle");
-  const modal     = document.getElementById("welcome-modal");
-  const helpBtn   = document.getElementById("help-btn");
-  const hint      = document.getElementById("hint-banner");
-
-  // --- collapsible map ---
-  if (mapToggle && centerSec) {
-    mapToggle.addEventListener("click", () => {
-      centerSec.classList.toggle("map-open");
-      setTimeout(() => {
-        try { state.map && state.map.invalidateSize(); } catch(_) {}
-      }, 260);
-    });
-  }
-
-  // --- welcome modal: show on first visit only ---
-  const SEEN_KEY = "mpi_welcomed_v1";
-  function showModal() { if (modal) modal.classList.add("visible"); }
-  function hideModal() {
-    if (modal) modal.classList.remove("visible");
-    try { localStorage.setItem(SEEN_KEY, "1"); } catch(_) {}
-  }
+async function load() {
   try {
-    if (!localStorage.getItem(SEEN_KEY)) setTimeout(showModal, 400);
-  } catch(_) { setTimeout(showModal, 400); }
-
-  document.getElementById("modal-got-it")?.addEventListener("click", hideModal);
-  document.getElementById("modal-skip")?.addEventListener("click", hideModal);
-  modal?.addEventListener("click", (e) => { if (e.target === modal) hideModal(); });
-
-  // --- help button: re-open modal anytime ---
-  helpBtn?.addEventListener("click", showModal);
-
-  // --- first filter click shows a contextual hint banner ---
-  const HINT_SEEN = "mpi_hint_v1";
-  const hintText    = document.getElementById("hint-text");
-  const hintDismiss = document.getElementById("hint-dismiss");
-  function showHint(text) {
-    if (!hint || !hintText) return;
-    try { if (localStorage.getItem(HINT_SEEN)) return; } catch(_) {}
-    hintText.textContent = text;
-    hint.classList.add("visible");
+    const r = await fetch("data/leads.json?v="+Date.now(), {cache:"no-store"});
+    if (!r.ok) throw new Error("leads.json not found");
+    const p = await r.json();
+    state.meta = p;
+    state.leads = (p.leads||[]).map((l,i)=>({...l, _id:i, _party:(l.names||[]).join(", ")}));
+    renderKPIs(); buildDocTypeFilters(); bind(); apply();
+    $("#loader").style.display = "none";
+  } catch(e) {
+    $("#loader").innerHTML = `<div class="empty">No data yet — expected <code>data/leads.json</code><br><br>${e.message}<br><br>run <code>python -m pipeline.build_docleads</code></div>`;
   }
-  function hideHint() {
-    hint?.classList.remove("visible");
-    try { localStorage.setItem(HINT_SEEN, "1"); } catch(_) {}
-  }
-  hintDismiss?.addEventListener("click", hideHint);
+}
 
-  const attachHint = () => {
-    document.querySelectorAll(".chip").forEach(c => {
-      if (c.dataset.hintBound) return;
-      c.dataset.hintBound = "1";
-      c.addEventListener("click", () => {
-        const label = (c.textContent || "").trim();
-        let msg = "Tip: click any lead row to see full property details, equity math, and distress signals on the right panel.";
-        if (/trustee sale|foreclosure/i.test(label))
-          msg = "🔥 These owners face auction in ~90 days. Pitch: buy before it hits credit — fast cash close.";
-        else if (/estate|affidavit of death/i.test(label))
-          msg = "👑 Inherited properties. Pitch: we buy as-is so heirs settle the estate without repairs or showings.";
-        else if (/tax lien|tax del/i.test(label))
-          msg = "💰 Owner is behind on taxes. Pitch: cash offer covers the lien and gives them walk-away money.";
-        else if (/absentee/i.test(label))
-          msg = "🏢 Out-of-area owner. Pitch: done with the headache? We close in 14 days, no showings.";
-        else if (/high equity|long hold/i.test(label))
-          msg = "💎 Deep equity. Pitch: tap it without listing — offer a clean all-cash close.";
-        showHint(msg);
-      });
+function renderKPIs() {
+  const m = state.meta;
+  $("#k-total").textContent = fmtN(m.total_leads);
+  const byC = {};
+  for (const l of state.leads) byC[l.county]=(byC[l.county]||0)+1;
+  $("#k-mar").textContent = fmtN(byC.Maricopa||0);
+  $("#k-pima").textContent = fmtN(byC.Pima||0);
+  const pct = m.total_leads ? Math.round(100*m.resolved/m.total_leads) : 0;
+  $("#k-resolved").textContent = pct+"%";
+  const fresh = state.leads.filter(l=>l.daily_opportunity).length;
+  $("#k-fresh").textContent = fmtN(fresh);
+  const dr = m.date_range||{};
+  $("#k-range").textContent = dr.min ? `${dr.min} → ${dr.max}` : "—";
+  $("#tc-all").textContent = fmtN(state.leads.length);
+  $("#tc-mar").textContent = fmtN(byC.Maricopa||0);
+  $("#tc-pima").textContent = fmtN(byC.Pima||0);
+}
+
+// Sidebar doc-type checklist, grouped by category, counts from the data itself
+function buildDocTypeFilters() {
+  const counts = {}; const cat = state.meta.doc_type_category||{};
+  for (const l of state.leads) counts[l.doc_type]=(counts[l.doc_type]||0)+1;
+  const groups = {};
+  for (const dt of Object.keys(counts)) {
+    const c = cat[dt]||"Other";
+    (groups[c] = groups[c]||[]).push(dt);
+  }
+  const host = $("#f-doctypes"); host.innerHTML="";
+  for (const c of CAT_ORDER) {
+    if (!groups[c]) continue;
+    const g = document.createElement("div"); g.className="catgroup";
+    const col = getComputedStyle(document.documentElement).getPropertyValue(catVar(c));
+    g.innerHTML = `<div class="cathead"><span class="swatch" style="background:${col}"></span>${c}</div>`;
+    groups[c].sort((a,b)=>counts[b]-counts[a]).forEach(dt=>{
+      const el = document.createElement("div");
+      el.className="dtchip"; el.dataset.dt=dt;
+      el.innerHTML = `<span>${dt}</span><span class="n">${fmtN(counts[dt])}</span>`;
+      el.onclick = ()=>{ el.classList.toggle("on");
+        state.f.docTypes.has(dt)?state.f.docTypes.delete(dt):state.f.docTypes.add(dt); apply(); };
+      g.appendChild(el);
     });
-  };
-  setTimeout(attachHint, 600);
-  const origBuild = window.buildSignalChips;
-  if (typeof origBuild === "function") {
-    window.buildSignalChips = function() {
-      const r = origBuild.apply(this, arguments);
-      setTimeout(attachHint, 50);
-      return r;
-    };
-  }
-
-  // --- show pinned-count next to map toggle label ---
-  const mapCountEl = document.getElementById("map-count");
-  if (mapCountEl) {
-    const origRender = window.renderTable;
-    if (typeof origRender === "function") {
-      window.renderTable = function() {
-        const r = origRender.apply(this, arguments);
-        try {
-          const n = (state.filtered || []).length;
-          mapCountEl.textContent = `(${n.toLocaleString()} pinned)`;
-        } catch(_) {}
-        return r;
-      };
-    }
+    host.appendChild(g);
   }
 }
 
-async function loadData() {
-  try {
-    const res = await fetch("data/leads.json?v=" + Date.now(), { cache: "no-store" });
-    if (!res.ok) throw new Error("leads.json not found");
-    const payload = await res.json();
-    state.leads = (payload.leads || []).map((l, i) => ({ ...l, _id: i }));
-    state.totalPool = payload.total_leads || state.leads.length;
-    state.generatedAt = payload.generated_at || null;
-    state.prevGeneratedAt = payload.previous_generated_at || null;
-    state.rotationDate = payload.daily_rotation_date || null;
-    $("#kpi-updated").textContent = (payload.generated_at || "").slice(0,10) || "—";
-    // Update Today's Pima Picks sublabel with the actual rotation date
-    if (state.rotationDate) {
-      const sub = document.getElementById("ql-sublabel-new");
-      if (sub) {
-        const d = new Date(state.rotationDate + "T00:00:00");
-        const opts = { month: "short", day: "numeric" };
-        sub.textContent = `${d.toLocaleDateString("en-US", opts)} · 3am MST refresh`;
-      }
-    }
-    $("#kpi-totalall").textContent = state.totalPool.toLocaleString();
-    buildSignalChips();
-    decorateFilterCounts();
-    computeQuickListCounts();
-    initQuickLists();
-    initGlobalSearch();
-    applyFilters();
-    $("#loader").classList.add("hidden");     // hide loader FIRST so UI shows even if map fails
-    try { initMap(); } catch (e) { console.warn("map init failed:", e); }
-    initUiPolish();  // map toggle, welcome modal, help button, hints
-  } catch (e) {
-    $("#loader").innerHTML = `
-      <div style="text-align:center; padding:30px">
-        <div class="wave" style="color:var(--danger)">no data yet</div>
-        <div class="hint">
-          expected <code>data/leads.json</code><br/>
-          run: <code>python pipeline/build_leads.py</code><br/><br/>
-          <span style="color:var(--text-muted)">${e.message}</span>
-        </div>
-      </div>`;
-  }
-}
-
-/* ============================================================
-   Filter chips: signals are discovered from the data
-   ============================================================ */
-function buildSignalChips() {
-  // Count occurrences of each signal type
-  const typeCounts = new Map();
-  for (const l of state.leads) {
-    const seen = new Set();
-    for (const s of (l.signals||[])) {
-      if (s.type && !seen.has(s.type)) {
-        typeCounts.set(s.type, (typeCounts.get(s.type) || 0) + 1);
-        seen.add(s.type);
-      }
-    }
-  }
-  const row = $("#f-signals");
-  row.innerHTML = "";
-  [...typeCounts.entries()].sort((a,b) => b[1] - a[1]).forEach(([t, n]) => {
-    const el = document.createElement("span");
-    el.className = "chip";
-    el.dataset.val = t;
-    el.innerHTML = `${t} <span class="chip-count">${n.toLocaleString()}</span>`;
-    el.addEventListener("click", () => {
-      el.classList.toggle("active");
-      if (state.filters.signals.has(t)) state.filters.signals.delete(t);
-      else state.filters.signals.add(t);
-      applyFilters();
-    });
-    row.appendChild(el);
+function bind() {
+  $$(".tab[data-county]").forEach(t=>t.onclick=()=>{
+    $$(".tab[data-county]").forEach(x=>x.classList.remove("active"));
+    t.classList.add("active"); state.f.county=t.dataset.county; apply();
+  });
+  const q=(id,key)=>$(id).onclick=()=>{ state.f[key]=!state.f[key]; $(id).classList.toggle("on",state.f[key]); apply(); };
+  q("#q-fresh","fresh"); q("#q-foreclosure","foreclosure"); q("#q-unresolved","unresolved");
+  $("#f-search").oninput=e=>{ state.f.search=e.target.value.toLowerCase().trim(); apply(); };
+  $("#f-from").onchange=e=>{ state.f.from=e.target.value; apply(); };
+  $("#f-to").onchange=e=>{ state.f.to=e.target.value; apply(); };
+  $("#f-resolved").onchange=e=>{ state.f.resolved=e.target.value; apply(); };
+  $$("#f-ann .ann").forEach(a=>a.onclick=()=>{ a.classList.toggle("on");
+    state.f.ann.has(a.dataset.ann)?state.f.ann.delete(a.dataset.ann):state.f.ann.add(a.dataset.ann); apply(); });
+  $$("thead th").forEach(th=>th.onclick=()=>{
+    const k=th.dataset.sort; if(!k) return;
+    if(state.sort.key===k) state.sort.dir*=-1; else {state.sort.key=k; state.sort.dir=-1;}
+    apply();
   });
 }
 
-/* ============================================================
-   Compute filter counts — every sidebar chip gets an inline badge
-   showing how many leads would fire that filter. Users can see
-   their option space at a glance instead of clicking into empty filters.
-   ============================================================ */
-function decorateFilterCounts() {
-  // Build a map: flag_name -> count of leads that have it
-  const counts = {
-    // property types
-    sfr:0, townhome_condo:0, mobile_home:0, multifamily_2_4:0, multifamily_5_20:0,
-    multifamily_20p:0, vacant_land:0, rural_acreage:0, commercial:0,
-    // deal intent — composite
-    foreclosure_risk:0, lawsuit_risk:0, lien_pressure:0,
-    // core flags (legacy)
-    absentee:0, out_of_state:0, estate_owner:0, family_trust:0,
-    likely_vacant:0, likely_foreclosure:0, long_hold:0, hide_cash_buyer:0,
-    // enrichment flags
-    equity_gap_high:0, negative_equity:0, widow_indicator:0,
-    multi_owner_inheritance:0, care_of_address:0, corporate_dissolved:0,
-    tired_landlord:0, accidental_landlord:0, mailing_to_pobox:0, out_of_country:0,
-    cash_flow_candidate:0, teardown_candidate:0, hurricane_equity:0,
-    bulk_owner_3plus:0, bulk_owner_10plus:0,
-    never_sold:0, recent_underprice_sale:0,
-  };
-
-  for (const l of state.leads) {
-    const lf = l.legacy_flags || {};
-    const ef = l.enrichment_flags || {};
-    const ptype = l.property_type || "";
-    const combos = l.combos || [];
-    const hasSig = type => (l.signals || []).some(s => s.type === type);
-
-    // Property types
-    if (ptype in counts) counts[ptype]++;
-
-    // Deal intent — use patterns array (single source of truth with filter logic)
-    const pats = l.patterns || [];
-    if (pats.includes("Foreclosure")) counts.foreclosure_risk++;
-    if (pats.includes("Legal") || hasSig("Probate Case")) counts.lawsuit_risk++;
-    if (pats.includes("Tax Pressure") || pats.includes("Legal")) counts.lien_pressure++;
-
-    // Legacy flags
-    if (lf.absentee) counts.absentee++;
-    if (lf.out_of_state) counts.out_of_state++;
-    if (lf.estate_owner) counts.estate_owner++;
-    if (lf.family_trust) counts.family_trust++;
-    if (lf.likely_vacant || ef.likely_vacant) counts.likely_vacant++;
-    if (lf.likely_foreclosure) counts.likely_foreclosure++;
-    if (lf.long_hold) counts.long_hold++;
-    // "hide_cash_buyer" is a HIDE filter — it hides entity-owned leads. Count = entity leads.
-    if (lf.entity_owner) counts.hide_cash_buyer++;
-
-    // Enrichment flags
-    for (const key of ["equity_gap_high","negative_equity","widow_indicator",
-                       "multi_owner_inheritance","care_of_address","corporate_dissolved",
-                       "tired_landlord","accidental_landlord","mailing_to_pobox","out_of_country",
-                       "cash_flow_candidate","teardown_candidate","hurricane_equity",
-                       "bulk_owner_3plus","bulk_owner_10plus","never_sold","recent_underprice_sale"]) {
-      if (ef[key]) counts[key]++;
-    }
-  }
-
-  // Inject count badges into every matching chip in the sidebar
-  document.querySelectorAll(".chip[data-val]").forEach(chip => {
-    const val = chip.dataset.val;
-    if (!(val in counts)) return; // skip signal-type chips (they're built separately)
-    const n = counts[val];
-    // Strip any existing count badge
-    const existing = chip.querySelector(".chip-count");
-    if (existing) existing.remove();
-    // Append fresh badge
-    const badge = document.createElement("span");
-    badge.className = "chip-count";
-    badge.textContent = n.toLocaleString();
-    chip.appendChild(document.createTextNode(" "));
-    chip.appendChild(badge);
-    // Dim zero-count chips
-    if (n === 0) {
-      chip.classList.add("chip-empty");
-    } else {
-      chip.classList.remove("chip-empty");
-    }
-  });
-}
-
-/* ============================================================
-   Filter bindings
-   ============================================================ */
-// County tab bar — filters all downstream state
-$$(".county-tab").forEach(el => {
-  el.addEventListener("click", () => {
-    $$(".county-tab").forEach(x => x.classList.remove("active"));
-    el.classList.add("active");
-    state.filters.activeTab = el.dataset.tab;
-    applyFilters();
-  });
-});
-$$("#f-flags .chip").forEach(el => {
-  el.addEventListener("click", () => {
-    el.classList.toggle("active");
-    const v = el.dataset.val;
-    if (state.filters.flags.has(v)) state.filters.flags.delete(v);
-    else state.filters.flags.add(v);
-    applyFilters();
-  });
-});
-
-// Multi-select handler factory for new chip groups
-function bindChipGroup(selector, stateKey) {
-  $$(`${selector} .chip`).forEach(el => {
-    el.addEventListener("click", () => {
-      el.classList.toggle("active");
-      const v = el.dataset.val;
-      if (state.filters[stateKey].has(v)) state.filters[stateKey].delete(v);
-      else state.filters[stateKey].add(v);
-      applyFilters();
-    });
-  });
-}
-bindChipGroup("#f-proptype",  "propertyTypes");
-bindChipGroup("#f-intent",    "intent");
-bindChipGroup("#f-distress",  "distress");
-bindChipGroup("#f-lifeevent", "lifeEvent");
-bindChipGroup("#f-holding",   "holding");
-bindChipGroup("#f-value",     "valuePlay");
-bindChipGroup("#f-portfolio", "portfolio");
-bindChipGroup("#f-velocity",  "velocity");
-// Min Tier chip buttons — single-select (radio-style)
-$$("#f-tier .chip").forEach(el => {
-  el.addEventListener("click", () => {
-    $$("#f-tier .chip").forEach(c => c.classList.remove("active"));
-    el.classList.add("active");
-    state.filters.minTier = el.dataset.val;
-    applyFilters();
-  });
-});
-// Default: "Any" active
-document.querySelector('#f-tier .chip[data-val="any"]')?.classList.add("active");
-
-$("#f-equity").addEventListener("input", e => {
-  state.filters.minEquity = +e.target.value;
-  $("#f-eq-val").textContent = state.filters.minEquity >= 1000 ? (state.filters.minEquity/1000)+"k" : state.filters.minEquity;
-  applyFilters();
-});
-$("#f-search").addEventListener("input", e => {
-  state.filters.search = e.target.value.toLowerCase().trim();
-  applyFilters();
-});
-
-/* ============================================================
-   Filtering + sorting
-   ============================================================ */
-function matches(lead) {
-  const f = state.filters;
-  if (f.activeTab !== "all" && lead.county !== f.activeTab) return false;
-
-  // Helper: check if a flag fired in either legacy_flags or enrichment_flags
-  const lf = lead.legacy_flags || {};
-  const ef = lead.enrichment_flags || {};
-  const hasFlag = name => !!(lf[name] || ef[name]);
-  const hasSignal = type => (lead.signals || []).some(s => s.type === type);
-  const combos = lead.combos || [];
-
-  // Quick Lists gate — overrides standard filtering with a curated preset
-  if (f.quickList && f.quickList !== "all") {
-    switch (f.quickList) {
-      case "new":
-        if (!isNewLead(lead)) return false;
-        break;
-      case "preforeclosure":
-        if (!(lead.patterns || []).includes("Foreclosure")) return false;
-        break;
-      case "estate":
-        if (!(lead.patterns || []).includes("Estate")) return false;
-        break;
-      case "taxlien":
-        if (!(lead.patterns || []).includes("Tax Pressure")) return false;
-        break;
-      case "absentee_equity":
-        if (!(lead.patterns || []).includes("Tired Landlord")) return false;
-        break;
-      case "high_equity":
-        if ((lead.equity_est||0) < 300000) return false;
-        break;
-      case "stacked":
-        if ((lead.stack_count||0) < 2) return false;
-        break;
-    }
-  }
-
-  // Property type filter (OR within group)
-  if (f.propertyTypes.size > 0 && !f.propertyTypes.has(lead.property_type)) return false;
-
-  // Deal Intent filters — composite "signal OR flag" groupings
-  // Each selected intent must fire at least one of its conditions (AND between intents, OR within intent)
-  if (f.intent.size > 0) {
-    for (const intent of f.intent) {
-      let intentHit = false;
-      const pats = lead.patterns || [];
-      switch (intent) {
-        case "foreclosure_risk":
-          // Real foreclosure signals only — uses the Foreclosure pattern
-          intentHit = pats.includes("Foreclosure");
-          break;
-        case "lawsuit_risk":
-          // Lawsuit / judgment / divorce / probate — uses the Legal + Estate patterns
-          intentHit = pats.includes("Legal") || hasSignal("Probate Case");
-          break;
-        case "lien_pressure":
-          // Any recorded lien — uses the Tax + Legal patterns
-          intentHit = pats.includes("Tax Pressure") || pats.includes("Legal");
-          break;
-      }
-      if (!intentHit) return false;
-    }
-  }
-
-  // Signal type filter
-  if (f.signals.size > 0) {
-    const leadTypes = new Set((lead.signals||[]).map(s => s.type));
-    let hit = false;
-    for (const t of f.signals) if (leadTypes.has(t)) { hit = true; break; }
-    if (!hit) return false;
-  }
-
-  // Core flags (backward compat + hide toggles)
-  if (f.flags.has("absentee")      && !lf.absentee)      return false;
-  if (f.flags.has("out_of_state")  && !lf.out_of_state)  return false;
-  if (f.flags.has("estate_owner")  && !lf.estate_owner)  return false;
-  if (f.flags.has("family_trust")  && !lf.family_trust)  return false;
-  if (f.flags.has("likely_vacant") && !ef.likely_vacant && !lf.likely_vacant) return false;
-  if (f.flags.has("likely_foreclosure") && !lf.likely_foreclosure) return false;
-  if (f.flags.has("long_hold")     && !lf.long_hold)     return false;
-  if (f.flags.has("hide_cash_buyer") && lf.entity_owner) return false;
-
-  // All category chip groups — require ALL selected chips in each group to fire
-  const checkGroup = (group) => {
-    if (group.size === 0) return true;
-    for (const flagName of group) {
-      if (!hasFlag(flagName)) return false;
-    }
-    return true;
-  };
-  if (!checkGroup(f.distress))   return false;
-  if (!checkGroup(f.lifeEvent))  return false;
-  if (!checkGroup(f.holding))    return false;
-  if (!checkGroup(f.valuePlay))  return false;
-  if (!checkGroup(f.portfolio))  return false;
-  if (!checkGroup(f.velocity))   return false;
-
-  // Min tier filter — maps tier names to stack_count thresholds
-  if (f.minTier && f.minTier !== "any") {
-    const sc = lead.stack_count || 0;
-    if (f.minTier === "hot"    && sc < 4) return false;
-    if (f.minTier === "strong" && sc < 3) return false;
-    if (f.minTier === "likely" && sc < 2) return false;
-    if (f.minTier === "watch"  && sc < 1) return false;
-  }
-  if ((lead.equity_est||0) < f.minEquity) return false;
-
+// SINGLE SOURCE OF TRUTH — counts and rows both derive from matches()
+function matches(l) {
+  const f = state.f;
+  if (f.county!=="all" && l.county!==f.county) return false;
+  if (f.docTypes.size && !f.docTypes.has(l.doc_type)) return false;
+  if (f.from && (l.recorded_date||"")<f.from) return false;
+  if (f.to && (l.recorded_date||"")>f.to) return false;
+  if (f.resolved==="resolved" && !l.resolved) return false;
+  if (f.resolved==="unresolved" && l.resolved) return false;
+  if (f.unresolved && l.resolved) return false;
+  if (f.fresh && !l.daily_opportunity) return false;
+  if (f.foreclosure && !(l.doc_code==="NS" && (l.status||"active")==="active")) return false;
+  if (f.ann.size) { const a=l.annotations||{}; for (const x of f.ann) if(!a[x]) return false; }
   if (f.search) {
-    const hay = [lead.apn, lead.owner, lead.site_address, lead.mail_address, lead.site_city]
-                .join(" ").toLowerCase();
-    if (!hay.includes(f.search)) return false;
+    const hay=[l.apn,l.owner,l.site_address,l.site_city,l.doc_number,l._party].join(" ").toLowerCase();
+    if(!hay.includes(f.search)) return false;
   }
   return true;
 }
 
-function applyFilters() {
+function apply() {
   state.filtered = state.leads.filter(matches);
-  sortFiltered();
-  renderTable();
-  renderKPIs();
-  renderMap();
-}
-
-/* ============================================================
-   Opportunity detection — fires when backend flagged this lead
-   in today's daily rotation (deterministic daily shuffle of
-   top-scoring leads). Same set all day, different tomorrow.
-   ============================================================ */
-function isOpportunity(lead) {
-  return !!lead.daily_opportunity;
-}
-// Legacy alias (keep old name working for any downstream references)
-function isNewLead(lead) { return isOpportunity(lead); }
-
-/* ============================================================
-   Quick Lists — the Propstream-style preset tiles at top
-   ============================================================ */
-function computeQuickListCounts() {
-  const counts = { all:0, new:0, preforeclosure:0, estate:0, taxlien:0,
-                   absentee_equity:0, high_equity:0, stacked:0 };
-  for (const lead of state.leads) {
-    counts.all++;
-    if (isNewLead(lead)) counts.new++;
-
-    const pats = lead.patterns || [];
-    const lf = lead.legacy_flags || {};
-
-    // Use patterns array as single source of truth (same as matches() logic)
-    if (pats.includes("Foreclosure")) counts.preforeclosure++;
-    if (pats.includes("Estate")) counts.estate++;
-    if (pats.includes("Tax Pressure")) counts.taxlien++;
-    if (pats.includes("Tired Landlord")) counts.absentee_equity++;
-    if ((lead.equity_est||0) >= 300000) counts.high_equity++;
-    if ((lead.stack_count||0) >= 2) counts.stacked++;
-  }
-  // Write counts back to the UI + dim zero-count tiles
-  for (const k of Object.keys(counts)) {
-    const el = document.getElementById(`ql-count-${k}`);
-    if (el) el.textContent = counts[k].toLocaleString();
-    const tile = document.querySelector(`.ql-tile[data-ql="${k}"]`);
-    if (tile) {
-      if (counts[k] === 0 && k !== "all") {
-        tile.classList.add("empty");
-      } else {
-        tile.classList.remove("empty");
-      }
-    }
-  }
-  // Update the header "Opps" KPI
-  const newKpi = document.getElementById("kpi-new");
-  if (newKpi) newKpi.textContent = counts.new.toLocaleString();
-}
-
-function initQuickLists() {
-  document.querySelectorAll(".ql-tile").forEach(tile => {
-    tile.addEventListener("click", () => {
-      const which = tile.dataset.ql;
-      // Toggle off if clicking the active tile while it's active
-      if (state.filters.quickList === which && which !== "all") {
-        state.filters.quickList = "all";
-      } else {
-        state.filters.quickList = which;
-      }
-      // Update visual active state
-      document.querySelectorAll(".ql-tile").forEach(t => t.classList.remove("active"));
-      if (state.filters.quickList !== "all") {
-        tile.classList.add("active");
-      } else {
-        // mark the "all" tile active instead
-        document.querySelector('.ql-tile[data-ql="all"]')?.classList.add("active");
-      }
-      applyFilters();
-    });
+  const {key,dir}=state.sort;
+  state.filtered.sort((a,b)=>{
+    let av=a[key]??"", bv=b[key]??"";
+    return (av<bv?-1:av>bv?1:0)*dir;
   });
-  // Start with "all" active
-  document.querySelector('.ql-tile[data-ql="all"]')?.classList.add("active");
+  render();
 }
 
-/* ============================================================
-   Global search with live autocomplete (top-of-header)
-   ============================================================ */
-function initGlobalSearch() {
-  const input = document.getElementById("global-search");
-  const dd    = document.getElementById("global-autocomplete");
-  if (!input || !dd) return;
-
-  let timer = null;
-  input.addEventListener("input", () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => renderAutocomplete(input.value.trim()), 120);
-  });
-  input.addEventListener("blur", () => {
-    setTimeout(() => dd.classList.remove("visible"), 180);
-  });
-  input.addEventListener("focus", () => {
-    if (input.value.trim()) renderAutocomplete(input.value.trim());
-  });
-}
-
-function renderAutocomplete(q) {
-  const dd = document.getElementById("global-autocomplete");
-  if (!dd) return;
-  if (!q || q.length < 2) {
-    dd.classList.remove("visible");
-    dd.innerHTML = "";
-    return;
-  }
-  const ql = q.toLowerCase();
-  const hits = [];
-  for (const lead of state.leads) {
-    const hay = [lead.apn, lead.owner, lead.site_address, lead.mail_address, lead.site_city]
-                .filter(Boolean).join(" ").toLowerCase();
-    if (hay.includes(ql)) {
-      hits.push(lead);
-      if (hits.length >= 12) break;
-    }
-  }
-  if (!hits.length) {
-    dd.innerHTML = `<div class="autocomplete-item" style="color:var(--text-muted); justify-content:center;">No matches</div>`;
-    dd.classList.add("visible");
-    return;
-  }
-  dd.innerHTML = hits.map(lead => {
-    const owner = (lead.owner || "(no owner)").slice(0, 40);
-    const addr  = lead.site_address ? `${lead.site_address}, ${lead.site_city || ""}` : "";
-    const score = lead.score || 0;
-    return `<div class="autocomplete-item" data-id="${lead._id}">
-              <div class="ac-main">
-                <div class="ac-owner">${escapeHtml(owner)}</div>
-                <div class="ac-addr">${escapeHtml(addr || lead.apn || "")}</div>
-              </div>
-              <div class="ac-score">${score}</div>
-            </div>`;
+function render() {
+  const rows = state.filtered.slice(0,600);
+  const cat = state.meta.doc_type_category||{};
+  $("#tbody").innerHTML = rows.map(l=>{
+    const col = `var(${catVar(cat[l.doc_type]||"Other")})`;
+    const badge = `<span class="dtbadge" style="background:${col}22;color:${col}">${l.doc_type}</span>`;
+    const fresh = l.daily_opportunity?'<span class="fresh">NEW</span>':'';
+    const status = l.doc_code==="NS" && l.status && l.status!=="active"
+      ? `<span class="stat ${l.status}">${l.status}</span>` : '';
+    const prop = l.resolved
+      ? `${l.site_address||l.apn||"—"}<br><span style="color:var(--text-muted);font-size:10px">${l.owner? l.owner.slice(0,32):""} ${l.site_city||""}</span>`
+      : `<span class="unres">unresolved</span><br><span style="color:var(--text-muted);font-size:10px">doc #${l.doc_number}</span>`;
+    return `<tr data-id="${l._id}" class="${state.sel===l._id?'sel':''}">
+      <td><span class="recdate">${l.recorded_date||"—"}</span>${fresh}</td>
+      <td>${badge} ${status}</td>
+      <td><span class="cpill ${l.county}">${l.county[0]}</span></td>
+      <td>${prop}</td>
+      <td style="font-size:11px;color:var(--text-dim)">${(l._party||"—").slice(0,46)}</td>
+    </tr>`;
   }).join("");
-  dd.classList.add("visible");
-  dd.querySelectorAll(".autocomplete-item[data-id]").forEach(el => {
-    el.addEventListener("mousedown", () => {
-      const id = +el.dataset.id;
-      state.selectedId = id;
-      state.filters.quickList = "all";
-      document.querySelectorAll(".ql-tile").forEach(t => t.classList.remove("active"));
-      document.querySelector('.ql-tile[data-ql="all"]')?.classList.add("active");
-      applyFilters();
-      renderDetail();
-      // scroll the selected row into view
-      setTimeout(() => {
-        const row = document.querySelector(`tr.selected`);
-        row?.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 80);
-      // clear input
-      document.getElementById("global-search").value = "";
-      document.getElementById("global-autocomplete").classList.remove("visible");
-    });
-  });
+  $("#tbody").querySelectorAll("tr").forEach(tr=>tr.onclick=()=>{ state.sel=+tr.dataset.id; render(); detail(); });
+  $("#foot").textContent = `${fmtN(state.filtered.length)} documents${state.filtered.length>600?" (top 600 shown)":""}`;
+  $("#sortlbl").textContent = `sorted by ${state.sort.key} ${state.sort.dir<0?"↓":"↑"}`;
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
-}
-
-function sortFiltered() {
-  const { key, dir } = state.sort;
-  state.filtered.sort((a,b) => {
-    let av = a[key], bv = b[key];
-    if (key === "signals") { av = (a.signals||[]).length; bv = (b.signals||[]).length; }
-    // Stack sort: primary stack_count, secondary score (within same stack depth, highest score first)
-    if (key === "stack_count") {
-      const sa = (+a.stack_count||0), sb = (+b.stack_count||0);
-      if (sa !== sb) return (sa - sb) * dir;
-      return ((+a.score||0) - (+b.score||0)) * dir;
-    }
-    if (av == null) av = "";
-    if (bv == null) bv = "";
-    if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
-    return ((+av||0) - (+bv||0)) * dir;
-  });
-}
-
-$$("#tbl thead th").forEach(th => {
-  th.addEventListener("click", () => {
-    const k = th.dataset.sort;
-    if (!k) return;
-    if (state.sort.key === k) state.sort.dir = -state.sort.dir;
-    else { state.sort.key = k; state.sort.dir = -1; }
-    $$("#tbl thead th").forEach(x => x.classList.remove("sorted"));
-    th.classList.add("sorted");
-    th.querySelector(".sort-arrow").textContent = state.sort.dir === -1 ? "▼" : "▲";
-    sortFiltered();
-    renderTable();
-  });
-});
-
-/* ============================================================
-   Table render
-   ============================================================ */
-function renderTable() {
-  const body = $("#tbody");
-  const max = 500; // virtualized cap
-  const rows = state.filtered.slice(0, max);
-  body.innerHTML = rows.map(l => {
-    // Pattern badges — the actual distress types this lead has
-    const patterns = l.patterns || [];
-    const patternBadges = patterns.map(p => {
-      const meta = PATTERN_META[p] || {emoji:"•", cls:"pat-generic"};
-      return `<span class="pattern-badge ${meta.cls}" title="${p}">${meta.emoji} ${p}</span>`;
-    }).join("");
-    const stackCount = l.stack_count || 0;
-    const stackTag = stackCount > 0
-      ? `<span class="signal-tag stack">×${stackCount}</span>`
-      : `<span style="color:var(--text-muted)">0</span>`;
-    const pt  = PROP_TYPES[l.property_type] || {};
-    const ptBadge = pt.icon ? `<span title="${pt.label||''}" style="margin-right:4px">${pt.icon}</span>` : "";
-    const tier = scoreTier(l.score, l.equity_est, l.signal_count, l.combos, l);
-    const tierPill = `<span class="tier-pill ${tier.key}" data-lead-id="${l._id}">${tier.emoji} ${tier.label}</span><span class="tier-raw">${stackCount}</span>`;
-    return `
-      <tr data-id="${l._id}" ${state.selectedId === l._id ? 'class="selected"' : ''}>
-        <td>${tierPill}</td>
-        <td><span class="county-pill ${l.county}">${l.county?.[0]||"?"}</span></td>
-        <td>${stackTag}</td>
-        <td><div class="pattern-badges">${patternBadges}</div></td>
-        <td>${ptBadge}${l.site_address || '<em style="color:var(--text-muted)">no site address</em>'}<br/>
-            <span style="color:var(--text-muted);font-size:10px">${l.site_city||""} ${l.site_zip||""}</span></td>
-        <td>${(l.owner||"—").slice(0,28)}${isNewLead(l) ? '<span class="new-badge">NEW</span>' : ''}</td>
-        <td>${fmtM(l.equity_est)}</td>
-        <td>${l.year_built || "—"}</td>
-      </tr>`;
-  }).join("");
-  $("#foot-count").textContent = `${state.filtered.length.toLocaleString()} leads shown${state.filtered.length > max ? " (top 500 rendered)" : ""}`;
-
-  $$("#tbody tr").forEach(tr => {
-    tr.addEventListener("click", () => {
-      state.selectedId = +tr.dataset.id;
-      renderTable();
-      renderDetail();
-    });
-  });
-
-  // Tier pill hover tooltip
-  $$(".tier-pill").forEach(pill => {
-    pill.addEventListener("mouseenter", e => showTierTooltip(e, +pill.dataset.leadId));
-    pill.addEventListener("mousemove",  e => moveTierTooltip(e));
-    pill.addEventListener("mouseleave", hideTierTooltip);
-  });
-}
-
-// Tier tooltip singleton
-let _tipEl = null;
-function ensureTip() {
-  if (!_tipEl) {
-    _tipEl = document.createElement("div");
-    _tipEl.className = "tier-tooltip";
-    document.body.appendChild(_tipEl);
-  }
-  return _tipEl;
-}
-function showTierTooltip(e, leadId) {
-  const l = state.leads.find(x => x._id === leadId);
-  if (!l) return;
-  const tier = scoreTier(l.score, l.equity_est, l.signal_count, l.combos, l);
-  const reasons = leadFlagReasons(l);
-  const tip = ensureTip();
-  tip.innerHTML = `
-    <h4>Why ${tier.emoji} ${tier.label}?</h4>
-    ${reasons.length
-      ? `<ul>${reasons.map(r => `<li>${r}</li>`).join("")}</ul>`
-      : `<div style="color:var(--text-muted)">Score ${l.score} — minimal motivation signals.</div>`}
-    <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,.08); font-size:10px; color:var(--text-muted)">
-      ${tier.desc} · raw score ${l.score}
-    </div>`;
-  moveTierTooltip(e);
-  tip.classList.add("visible");
-}
-function moveTierTooltip(e) {
-  const tip = ensureTip();
-  const pad = 14;
-  let x = e.clientX + pad, y = e.clientY + pad;
-  const rect = tip.getBoundingClientRect();
-  if (x + rect.width  > window.innerWidth)  x = e.clientX - rect.width  - pad;
-  if (y + rect.height > window.innerHeight) y = e.clientY - rect.height - pad;
-  tip.style.left = x + "px";
-  tip.style.top  = y + "px";
-}
-function hideTierTooltip() {
-  if (_tipEl) _tipEl.classList.remove("visible");
-}
-
-/* ============================================================
-   KPIs
-   ============================================================ */
-function renderKPIs() {
-  const f = state.filtered;
-  $("#kpi-total").textContent = f.length.toLocaleString();
-  // (Stacked 2+ KPI removed — too broad to be useful)
-
-  // Update county tab badge counts (based on unfiltered leads so tabs always show total per county)
-  const mAll  = document.getElementById("tab-count-all");
-  const mMar  = document.getElementById("tab-count-maricopa");
-  const mPima = document.getElementById("tab-count-pima");
-  if (mAll)  mAll.textContent  = state.leads.length.toLocaleString();
-  if (mMar)  mMar.textContent  = state.leads.filter(x => x.county === "Maricopa").length.toLocaleString();
-  if (mPima) mPima.textContent = state.leads.filter(x => x.county === "Pima").length.toLocaleString();
-}
-
-/* ============================================================
-   Detail panel + calculator
-   ============================================================ */
-function renderDetail() {
-  const l = state.leads.find(x => x._id === state.selectedId);
+function detail() {
+  const l = state.leads.find(x=>x._id===state.sel);
   const el = $("#detail");
-  if (!l) {
-    el.innerHTML = '<div class="empty-detail">Select a lead to view details and run deal math</div>';
-    return;
-  }
-  // call_angle is a tag string in current data; older files shipped the full object
-  const ca = typeof l.call_angle === "string"
-    ? { ...(CALL_ANGLE_COPY[l.call_angle] || CALL_ANGLE_COPY.generic), tag: l.call_angle }
-    : (l.call_angle || null);
-  const combosHit = l.combos || [];
-  const newFlag = isNewLead(l);
+  if (!l) { el.innerHTML='<div class="empty">Select a document.</div>'; return; }
+  const cat = (state.meta.doc_type_category||{})[l.doc_type]||"Other";
+  const col = `var(${catVar(cat)})`;
+  const ann = l.annotations||{};
+  const annHtml = Object.keys(ann).length
+    ? Object.keys(ann).map(k=>`<span class="annpill">${k.replace(/_/g,' ')}</span>`).join("")
+    : '<span style="color:var(--text-muted)">none</span>';
+  const statusRow = l.doc_code==="NS"
+    ? `<span class="k">Status</span><span class="v">${l.status||"active"}</span>` : "";
+  const statusDoc = l.status_doc
+    ? `<div class="sec"><h4>Closed by</h4><div class="kv">
+         <span class="k">${l.status_doc.doc_type}</span><span class="v">${l.status_doc.recorded_date}</span>
+         <span class="k">Doc #</span><span class="v">${l.status_doc.doc_number}</span></div></div>` : "";
   el.innerHTML = `
-    <h2>${l.site_address || "—"}${newFlag ? '<span class="new-badge" style="vertical-align:middle;margin-left:10px;font-size:10px;">NEW</span>' : ""}</h2>
-    <div class="sub">${l.site_city || ""} ${l.site_zip || ""} · <span class="county-pill ${l.county}">${l.county}</span></div>
-
-    ${ca ? `
-      <div class="call-angle">
-        <div class="angle-head">${ca.headline || ""}</div>
-        <div class="angle-pitch">${ca.pitch || ""}</div>
-        <span class="angle-tag">${ca.tag || ""}</span>
-      </div>
-    ` : ""}
-
-    ${(l.patterns && l.patterns.length) ? `
-      <div class="section">
-        <h4>🎯 Distress Patterns (${l.stack_count || 0} stacked)</h4>
-        <div class="pattern-badges" style="margin-bottom:8px">
-          ${l.patterns.map(p => {
-            const meta = PATTERN_META[p] || {emoji:"•", cls:"pat-generic"};
-            return `<span class="pattern-badge ${meta.cls}">${meta.emoji} ${p}</span>`;
-          }).join("")}
-        </div>
-      </div>
-    ` : ""}
-
-    ${combosHit.length ? `
-      <div class="section">
-        <h4>Combo Signals</h4>
-        ${combosHit.map(c => `<span class="combo-badge">${c.replace(/_/g,' ')}</span>`).join("")}
-      </div>
-    ` : ""}
-
-    <div class="section">
-      <h4>📊 Tier Breakdown</h4>
-      <div class="kv">
-        <span class="k">Distress Stack</span><span class="v">${l.stack_count||0} pattern${(l.stack_count||0)===1?'':'s'}</span>
-        <span class="k">Raw Score</span><span class="v">${l.score||0}</span>
-        <span class="k">Recorded Signals</span><span class="v">${l.signal_count||0}</span>
-        <span class="k">Equity Est.</span><span class="v" style="color:var(--ok)">${fmtM(l.equity_est)}</span>
-      </div>
+    <span class="dtbadge" style="background:${col}22;color:${col}">${l.doc_type}</span>
+    <h2 style="margin-top:8px">${l.resolved ? (l.site_address||l.apn||"—") : "Unresolved document"}</h2>
+    <div class="sub">${l.county} · recorded ${l.recorded_date||"—"} ${l.daily_opportunity?'· <span style="color:var(--ok)">NEW</span>':''}</div>
+    <div class="sec"><h4>Document</h4><div class="kv">
+      <span class="k">Type</span><span class="v">${l.doc_type}</span>
+      <span class="k">Doc number</span><span class="v">${l.doc_number||"—"}</span>
+      <span class="k">Recorded</span><span class="v">${l.recorded_date||"—"}</span>
+      <span class="k">Source</span><span class="v">${l.source||"—"}</span>
+      ${statusRow}
+    </div></div>
+    ${statusDoc}
+    <div class="sec"><h4>Parties</h4>
+      ${(l.names&&l.names.length)?`<div style="font-size:12px">${l.names.join("<br>")}</div>`:'<span style="color:var(--text-muted)">—</span>'}
     </div>
-
-    <div class="section">
-      <h4>Property</h4>
-      <div class="kv">
-        <span class="k">APN</span><span class="v">${l.apn||"—"}</span>
-        <span class="k">Use</span><span class="v">${l.use_desc||"—"}</span>
-        <span class="k">Year built</span><span class="v">${l.year_built||"—"}</span>
-        <span class="k">Living sqft</span><span class="v">${fmt(l.living_sqft)}</span>
-        <span class="k">Lot sqft</span><span class="v">${fmt(l.lot_sqft)}</span>
-        <span class="k">FCV</span><span class="v">${fmtM(l.fcv)}</span>
-        <span class="k">Last sale</span><span class="v">${l.last_sale_date||"—"} · ${fmtM(l.last_sale_price)}</span>
-        <span class="k">Equity est.</span><span class="v" style="color:var(--ok)">${fmtM(l.equity_est)}</span>
-      </div>
-    </div>
-
-    <div class="section">
-      <h4>Owner</h4>
-      <div class="kv">
-        <span class="k">Name</span><span class="v">${l.owner||"—"}</span>
-        ${l.owner_2 ? `<span class="k">Co-owner</span><span class="v">${l.owner_2}</span>` : ""}
-        <span class="k">Mailing</span><span class="v">${l.mail_address||"—"}</span>
-        <span class="k">City/State</span><span class="v">${l.mail_city||""} ${l.mail_state||""} ${l.mail_zip||""}</span>
-        ${(l.legacy_flags||{}).absentee ? '<span class="k">Flag</span><span class="v" style="color:var(--warn)">Absentee</span>' : ""}
-        ${(l.legacy_flags||{}).out_of_state ? '<span class="k">Flag</span><span class="v" style="color:var(--warn)">Out of state</span>' : ""}
-      </div>
-    </div>
-
-    <div class="section">
-      <h4>Signals (${l.signal_count||0})</h4>
-      <ul class="sig-list">
-        ${(l.signals||[]).map(s => `
-          <li>
-            <span class="st">${s.type}</span>
-            <span class="dt">${s.date||""}</span>
-            ${s.doc_url ? `<br/><a href="${s.doc_url}" target="_blank" rel="noopener">view document →</a>` : ""}
-          </li>
-        `).join("")}
-      </ul>
-    </div>
-
-    <div class="section">
-      <h4>Deal Calculator</h4>
-      <div class="calc-modes">
-        <div class="calc-mode active" data-mode="wholesale">Wholesale</div>
-        <div class="calc-mode" data-mode="flip">Fix & Flip</div>
-        <div class="calc-mode" data-mode="brrrr">BRRRR</div>
-        <div class="calc-mode" data-mode="subto">Sub-To</div>
-        <div class="calc-mode" data-mode="novation">Novation</div>
-        <div class="calc-mode" data-mode="owner">Seller Finance</div>
-      </div>
-      <div id="calc-body"></div>
-    </div>
+    <div class="sec"><h4>Property ${l.resolved?"":"(unresolved — name-only lead)"}</h4><div class="kv">
+      <span class="k">APN</span><span class="v">${l.apn||"—"}</span>
+      <span class="k">Owner</span><span class="v">${l.owner||"—"}</span>
+      <span class="k">Site</span><span class="v">${l.site_address||"—"}</span>
+      <span class="k">City/Zip</span><span class="v">${l.site_city||""} ${l.site_zip||""}</span>
+      <span class="k">Mailing</span><span class="v">${l.mail_address||"—"}</span>
+      <span class="k">Mail city/st</span><span class="v">${l.mail_city||""} ${l.mail_state||""} ${l.mail_zip||""}</span>
+      <span class="k">FCV</span><span class="v">${fmtM(l.fcv)}</span>
+      <span class="k">Year built</span><span class="v">${l.year_built||"—"}</span>
+      ${l.match_tier?`<span class="k">Match confidence</span><span class="v">tier ${l.match_tier}</span>`:""}
+    </div></div>
+    <div class="sec"><h4>Annotations</h4>${annHtml}</div>
   `;
-  renderCalc(l);
-
-  // focus map marker
-  if (window._latlon && window._latlon[l._id]) {
-    const { lat, lon } = window._latlon[l._id];
-    state.map.flyTo([lat, lon], 16, { duration: 0.5 });
-  }
-
-  $$(".calc-mode").forEach(m => m.addEventListener("click", () => {
-    state.calcMode = m.dataset.mode;
-    $$(".calc-mode").forEach(x => x.classList.remove("active"));
-    m.classList.add("active");
-    renderCalc(l);
-  }));
 }
 
-/* ============================================================
-   Six-mode calculator
-   ============================================================ */
-function renderCalc(l) {
-  const arv = l.fcv ? Math.round(l.fcv * 1.05) : 250000; // default ARV guess
-  const sqft = l.living_sqft || 1500;
-  const repairs = sqft * 25;    // default $25/sqft
-  const body = $("#calc-body");
-
-  const modes = {
-    wholesale: `
-      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
-      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
-      <div class="calc-row"><label>MAO %</label><input id="c-mao" value="0.70" /></div>
-      <div class="calc-row"><label>Assignment Fee</label><input id="c-fee" value="10000" /></div>
-    `,
-    flip: `
-      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
-      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
-      <div class="calc-row"><label>MAO %</label><input id="c-mao" value="0.75" /></div>
-      <div class="calc-row"><label>Holding (mo)</label><input id="c-hold" value="6" /></div>
-      <div class="calc-row"><label>Hold $/mo</label><input id="c-holdcost" value="2000" /></div>
-      <div class="calc-row"><label>Profit target</label><input id="c-profit" value="30000" /></div>
-    `,
-    brrrr: `
-      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
-      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
-      <div class="calc-row"><label>Refi LTV</label><input id="c-ltv" value="0.75" /></div>
-      <div class="calc-row"><label>Rent (mo)</label><input id="c-rent" value="${Math.round(sqft*1.2)}" /></div>
-    `,
-    subto: `
-      <div class="calc-row"><label>Existing balance</label><input id="c-bal" value="${Math.round((l.last_sale_price||arv*0.6))}" /></div>
-      <div class="calc-row"><label>Interest rate</label><input id="c-rate" value="0.045" /></div>
-      <div class="calc-row"><label>P&I (mo)</label><input id="c-pi" value="1500" /></div>
-      <div class="calc-row"><label>Seller cash</label><input id="c-sc" value="5000" /></div>
-      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
-    `,
-    novation: `
-      <div class="calc-row"><label>ARV</label><input id="c-arv" value="${arv}" /></div>
-      <div class="calc-row"><label>Repairs</label><input id="c-rep" value="${repairs}" /></div>
-      <div class="calc-row"><label>Agreed w/ seller</label><input id="c-agreed" value="${Math.round(arv*0.85)}" /></div>
-      <div class="calc-row"><label>Sale commission</label><input id="c-comm" value="0.06" /></div>
-    `,
-    owner: `
-      <div class="calc-row"><label>Purchase price</label><input id="c-pur" value="${Math.round(arv*0.9)}" /></div>
-      <div class="calc-row"><label>Down payment</label><input id="c-down" value="10000" /></div>
-      <div class="calc-row"><label>Interest rate</label><input id="c-rate" value="0.06" /></div>
-      <div class="calc-row"><label>Amort (yrs)</label><input id="c-yrs" value="30" /></div>
-    `,
-  };
-  body.innerHTML = modes[state.calcMode] + `
-    <div class="calc-result">
-      <div class="label" id="c-label">MAO</div>
-      <div class="main" id="c-value">—</div>
-      <div style="font-size:10px; color:var(--text-muted); margin-top:4px" id="c-detail"></div>
-    </div>
-  `;
-  const compute = () => {
-    const v = id => +(($("#"+id)?.value)||0);
-    const label = $("#c-label"), val = $("#c-value"), det = $("#c-detail");
-    switch (state.calcMode) {
-      case "wholesale": {
-        const mao = v("c-arv") * v("c-mao") - v("c-rep") - v("c-fee");
-        label.textContent = "MAX OFFER TO SELLER";
-        val.textContent = fmtM(mao);
-        det.textContent = `ARV×${v("c-mao")} – repairs – ${fmt(v("c-fee"))} fee`;
-        break;
-      }
-      case "flip": {
-        const mao = v("c-arv") * v("c-mao") - v("c-rep") - v("c-hold")*v("c-holdcost") - v("c-profit");
-        label.textContent = "MAX ACQUISITION";
-        val.textContent = fmtM(mao);
-        det.textContent = `Target profit ${fmtM(v("c-profit"))} after repairs + ${v("c-hold")} mo holding`;
-        break;
-      }
-      case "brrrr": {
-        const refi = v("c-arv") * v("c-ltv");
-        const allIn = v("c-arv") * 0.70 + v("c-rep"); // buy+repair target
-        const pulled = refi - allIn;
-        label.textContent = "CASH PULLED AT REFI";
-        val.textContent = fmtM(pulled);
-        det.textContent = `Refi ${fmtM(refi)} – all-in ${fmtM(allIn)} · rent ${fmtM(v("c-rent"))}/mo`;
-        break;
-      }
-      case "subto": {
-        const spread = v("c-arv") - v("c-bal") - v("c-sc");
-        label.textContent = "EQUITY SPREAD";
-        val.textContent = fmtM(spread);
-        det.textContent = `Take loan ${fmtM(v("c-bal"))} @ ${(v("c-rate")*100).toFixed(2)}% · P&I ${fmtM(v("c-pi"))}/mo · ${fmtM(v("c-sc"))} to seller`;
-        break;
-      }
-      case "novation": {
-        const net = v("c-arv") - v("c-agreed") - v("c-rep") - v("c-arv")*v("c-comm");
-        label.textContent = "NOVATION NET";
-        val.textContent = fmtM(net);
-        det.textContent = `List at ARV, pay seller ${fmtM(v("c-agreed"))}, absorb commission ${(v("c-comm")*100).toFixed(1)}%`;
-        break;
-      }
-      case "owner": {
-        const principal = v("c-pur") - v("c-down");
-        const r = v("c-rate")/12;
-        const n = v("c-yrs")*12;
-        const pmt = r ? principal * r / (1 - Math.pow(1+r, -n)) : principal/n;
-        label.textContent = "MONTHLY P&I TO SELLER";
-        val.textContent = fmtM(pmt);
-        det.textContent = `Financed ${fmtM(principal)} @ ${(v("c-rate")*100).toFixed(2)}% over ${v("c-yrs")} yrs`;
-        break;
-      }
-    }
-  };
-  body.addEventListener("input", compute);
-  compute();
+// ---- exports (unresolved leads still exportable with name + doc #) ----
+function toCSV(rows, cols){
+  const esc=v=>{ if(v==null)return""; const s=String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; };
+  return cols.map(c=>c.label).join(",")+"\n"+rows.map(r=>cols.map(c=>esc(c.get(r))).join(",")).join("\n");
 }
+function dl(name,txt){ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([txt],{type:"text/csv"})); a.download=name; a.click(); }
+function splitOwner(s){ if(!s)return["",""]; s=s.trim(); if(/TRUST|LLC|INC|LTD/i.test(s))return["",s]; if(s.includes(","))return[(s.split(",")[1]||"").trim().split(/\s+/)[0]||"",s.split(",")[0].trim()]; const p=s.split(/\s+/); return p.length===1?["",p[0]]:[p.slice(0,-1).join(" "),p.at(-1)]; }
+// name to use when the doc is unresolved: fall back to the first party name
+const exName = l => l.owner || (l.names&&l.names[0]) || "";
+$("#ex-skip").onclick = () => dl("skiptrace.csv", toCSV(state.filtered, [
+  {label:"Owner First", get:l=>splitOwner(exName(l))[0]},
+  {label:"Owner Last",  get:l=>splitOwner(exName(l))[1]},
+  {label:"Mailing Address", get:l=>l.mail_address||""},
+  {label:"Mailing City", get:l=>l.mail_city||""},
+  {label:"Mailing State", get:l=>l.mail_state||""},
+  {label:"Mailing Zip", get:l=>l.mail_zip||""},
+  {label:"Property Address", get:l=>l.site_address||""},
+  {label:"Property City", get:l=>l.site_city||""},
+  {label:"Property Zip", get:l=>l.site_zip||""},
+  {label:"APN", get:l=>l.apn||""},
+  {label:"County", get:l=>l.county},
+  {label:"Doc Type", get:l=>l.doc_type},
+  {label:"Doc Number", get:l=>l.doc_number||""},
+  {label:"Recorded", get:l=>l.recorded_date||""},
+  {label:"Resolved", get:l=>l.resolved?"Y":"N"},
+]));
+$("#ex-ghl").onclick = () => dl("ghl.csv", toCSV(state.filtered, [
+  {label:"First Name", get:l=>splitOwner(exName(l))[0]},
+  {label:"Last Name",  get:l=>splitOwner(exName(l))[1]},
+  {label:"Address Line 1", get:l=>l.mail_address||l.site_address||""},
+  {label:"City", get:l=>l.mail_city||l.site_city||""},
+  {label:"State", get:l=>l.mail_state||"AZ"},
+  {label:"Postal Code", get:l=>l.mail_zip||l.site_zip||""},
+  {label:"Source", get:_=>"Maricopa/Pima Doc Intel"},
+  {label:"Tags", get:l=>[l.county,l.doc_type,...Object.keys(l.annotations||{})].join(", ")},
+  {label:"APN", get:l=>l.apn||""},
+  {label:"Doc Type", get:l=>l.doc_type},
+  {label:"Doc Number", get:l=>l.doc_number||""},
+  {label:"Recorded", get:l=>l.recorded_date||""},
+]));
 
-/* ============================================================
-   Map
-   ============================================================ */
-function initMap() {
-  state.map = L.map("map", { zoomControl: true }).setView([33.45, -112.07], 9);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    subdomains: "abcd",
-    maxZoom: 19,
-    attribution: "© OSM © CARTO"
-  }).addTo(state.map);
-  state.markers = L.layerGroup().addTo(state.map);
-  renderMap();
-}
-
-function renderMap() {
-  if (!state.map || typeof L === "undefined") return;
-  state.markers.clearLayers();
-  window._latlon = {};
-  // Simple zip-centroid approximation for points without true lat/lon.
-  // (If you add geometry to the parcel scrape, swap this out for real coords.)
-  let bounds = [];
-  for (const l of state.filtered.slice(0, 500)) {
-    const ll = approximateLatLon(l);
-    if (!ll) continue;
-    window._latlon[l._id] = ll;
-    const color = l.county === "Maricopa" ? "#3c8ec9" : "#c97d3c";
-    const m = L.circleMarker([ll.lat, ll.lon], {
-      radius: 3 + Math.min(7, (l.score||0)/30),
-      color, fillColor: color, fillOpacity: 0.75, weight: 1,
-    }).bindPopup(`
-      <strong>${l.site_address||""}</strong><br/>
-      ${l.site_city||""} ${l.site_zip||""}<br/>
-      Score: <b>${l.score||0}</b> · ${l.signal_count||1} signal(s)
-    `);
-    m.on("click", () => { state.selectedId = l._id; renderTable(); renderDetail(); });
-    state.markers.addLayer(m);
-    bounds.push([ll.lat, ll.lon]);
-  }
-  if (bounds.length > 5) state.map.fitBounds(bounds, { padding: [20,20], maxZoom: 11 });
-}
-
-/* Rough zip -> lat/lon centroid bag — good enough for map clustering until you
-   add true geometry to the parcel scrape. Add more as needed. */
-const ZIP_CENTROIDS = {
-  // Phoenix metro
-  "85001":[33.4488,-112.0740],"85003":[33.4517,-112.0801],"85004":[33.4534,-112.0700],
-  "85006":[33.4668,-112.0509],"85007":[33.4517,-112.0890],"85008":[33.4625,-112.0317],
-  "85009":[33.4520,-112.0985],"85013":[33.5111,-112.0783],"85015":[33.5098,-112.0852],
-  "85016":[33.5138,-112.0422],"85017":[33.5152,-112.0957],"85018":[33.5006,-111.9998],
-  "85019":[33.5154,-112.1156],"85020":[33.5568,-112.0691],"85021":[33.5594,-112.0884],
-  "85022":[33.6127,-112.0494],"85023":[33.6324,-112.0886],"85024":[33.6760,-112.0651],
-  "85027":[33.6689,-112.0959],"85028":[33.5896,-112.0132],"85029":[33.5819,-112.1195],
-  "85032":[33.6170,-112.0283],"85033":[33.4786,-112.2182],"85037":[33.4810,-112.2579],
-  "85040":[33.3911,-112.0432],"85041":[33.3803,-112.0934],"85042":[33.3707,-112.0376],
-  "85043":[33.3958,-112.1762],"85044":[33.3403,-112.0368],"85045":[33.3063,-112.1050],
-  "85048":[33.3147,-112.0454],"85051":[33.5594,-112.1225],"85053":[33.6324,-112.1225],
-  "85054":[33.6552,-111.9517],"85083":[33.7376,-112.1495],"85085":[33.7517,-112.0776],
-  "85086":[33.8428,-112.1321],
-  // Scottsdale / Paradise Valley
-  "85250":[33.5244,-111.9014],"85251":[33.4920,-111.9273],"85253":[33.5292,-111.9605],
-  "85254":[33.6160,-111.9900],"85255":[33.6677,-111.8775],"85257":[33.4689,-111.9296],
-  "85258":[33.5641,-111.8987],"85259":[33.5819,-111.8353],"85260":[33.5965,-111.8784],
-  "85262":[33.7868,-111.8088],"85266":[33.7817,-111.8808],
-  // Mesa / Gilbert / Chandler / Tempe
-  "85201":[33.4346,-111.8368],"85202":[33.3963,-111.8752],"85203":[33.4480,-111.8075],
-  "85204":[33.4128,-111.7934],"85205":[33.4376,-111.7401],"85206":[33.4221,-111.7158],
-  "85207":[33.4546,-111.6540],"85208":[33.3926,-111.6908],"85209":[33.3859,-111.6440],
-  "85210":[33.3948,-111.8454],"85212":[33.3459,-111.6400],"85213":[33.4456,-111.7624],
-  "85215":[33.4869,-111.6737],"85233":[33.3531,-111.7974],"85234":[33.3686,-111.7512],
-  "85295":[33.3080,-111.7366],"85296":[33.3354,-111.7545],"85297":[33.2833,-111.7410],
-  "85298":[33.2493,-111.7405],"85224":[33.3169,-111.8715],"85225":[33.3113,-111.8278],
-  "85226":[33.3232,-111.9291],"85248":[33.2586,-111.8679],"85249":[33.2471,-111.8284],
-  "85281":[33.4237,-111.9298],"85282":[33.3956,-111.9313],"85283":[33.3715,-111.9311],
-  "85284":[33.3478,-111.9369],
-  // Glendale / Peoria / Surprise
-  "85301":[33.5386,-112.1859],"85302":[33.5676,-112.1766],"85303":[33.5392,-112.2069],
-  "85304":[33.5822,-112.1800],"85305":[33.5411,-112.2345],"85306":[33.6160,-112.1782],
-  "85308":[33.6506,-112.1834],"85310":[33.6712,-112.1450],"85345":[33.5852,-112.2500],
-  "85381":[33.5875,-112.2454],"85382":[33.6496,-112.2377],"85383":[33.7109,-112.2318],
-  "85392":[33.5280,-112.3169],"85395":[33.5188,-112.3681],"85374":[33.6336,-112.3676],
-  "85375":[33.6556,-112.3810],"85378":[33.6295,-112.3317],"85379":[33.6140,-112.3760],
-  "85387":[33.7005,-112.4230],"85388":[33.6510,-112.4308],
-  // Tucson metro (Pima)
-  "85701":[32.2217,-110.9683],"85704":[32.3236,-110.9746],"85705":[32.2766,-110.9791],
-  "85706":[32.1566,-110.9491],"85708":[32.1700,-110.8667],"85710":[32.2214,-110.8299],
-  "85711":[32.2141,-110.8924],"85712":[32.2548,-110.8898],"85713":[32.1894,-110.9657],
-  "85714":[32.1831,-110.9455],"85715":[32.2546,-110.8296],"85716":[32.2459,-110.9237],
-  "85718":[32.3080,-110.9168],"85719":[32.2439,-110.9422],"85730":[32.1949,-110.7878],
-  "85735":[32.1490,-111.1920],"85736":[31.9630,-111.3600],"85737":[32.4200,-110.9500],
-  "85739":[32.5075,-110.8855],"85741":[32.3247,-111.0244],"85742":[32.3551,-111.0547],
-  "85743":[32.3500,-111.1200],"85745":[32.2315,-111.0207],"85746":[32.1589,-111.0269],
-  "85747":[32.1437,-110.7711],"85748":[32.2103,-110.7780],"85749":[32.2600,-110.7500],
-  "85750":[32.2700,-110.8300],"85755":[32.4369,-110.9600],"85756":[32.0930,-110.8870],
-  "85757":[32.1568,-111.0984],"85629":[31.9598,-110.9750],"85614":[31.8900,-110.9800],
-  "85641":[32.0480,-110.6610],"85658":[32.4200,-111.0800],"85653":[32.4338,-111.2247],
-  "85735":[32.1490,-111.1920],
-};
-
-function approximateLatLon(lead) {
-  const z = (lead.site_zip || "").slice(0,5);
-  if (ZIP_CENTROIDS[z]) {
-    const [lat, lon] = ZIP_CENTROIDS[z];
-    // small jitter so markers in same zip don't stack
-    return { lat: lat + (Math.random()-0.5)*0.01, lon: lon + (Math.random()-0.5)*0.01 };
-  }
-  return null;
-}
-
-/* ============================================================
-   Export (client-side)
-   ============================================================ */
-function toCSV(rows, cols) {
-  const esc = v => {
-    if (v == null) return "";
-    const s = String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const head = cols.map(c => c.label).join(",");
-  const body = rows.map(r => cols.map(c => esc(c.get(r))).join(",")).join("\n");
-  return head + "\n" + body;
-}
-
-function download(filename, content) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-}
-
-function splitOwner(full) {
-  if (!full) return ["",""];
-  const s = full.trim();
-  if (/TRUST|LLC|INC|LTD/i.test(s)) return ["", s];
-  if (s.includes(",")) {
-    const [last, rest] = s.split(",");
-    const first = (rest||"").trim().split(/\s+/)[0]||"";
-    return [first, last.trim()];
-  }
-  const p = s.split(/\s+/);
-  if (p.length === 1) return ["", p[0]];
-  return [p.slice(0,-1).join(" "), p[p.length-1]];
-}
-
-$("#btn-skip").addEventListener("click", () => {
-  const cols = [
-    { label: "Owner First",      get: l => splitOwner(l.owner)[0] },
-    { label: "Owner Last",       get: l => splitOwner(l.owner)[1] },
-    { label: "Mailing Address",  get: l => l.mail_address || "" },
-    { label: "Mailing City",     get: l => l.mail_city || "" },
-    { label: "Mailing State",    get: l => l.mail_state || "" },
-    { label: "Mailing Zip",      get: l => l.mail_zip || "" },
-    { label: "Property Address", get: l => l.site_address || "" },
-    { label: "Property City",    get: l => l.site_city || "" },
-    { label: "Property State",   get: l => "AZ" },
-    { label: "Property Zip",     get: l => l.site_zip || "" },
-    { label: "APN",              get: l => l.apn || "" },
-    { label: "County",           get: l => l.county || "" },
-  ];
-  download("skiptrace.csv", toCSV(state.filtered, cols));
-});
-
-$("#btn-ghl").addEventListener("click", () => {
-  const cols = [
-    { label: "First Name",       get: l => splitOwner(l.owner)[0] },
-    { label: "Last Name",        get: l => splitOwner(l.owner)[1] },
-    { label: "Phone",            get: _ => "" },
-    { label: "Email",            get: _ => "" },
-    { label: "Address Line 1",   get: l => l.mail_address || l.site_address || "" },
-    { label: "City",             get: l => l.mail_city || l.site_city || "" },
-    { label: "State",            get: l => l.mail_state || "AZ" },
-    { label: "Postal Code",      get: l => l.mail_zip || l.site_zip || "" },
-    { label: "Source",           get: _ => "Maricopa/Pima Intel" },
-    { label: "Tags",             get: l => {
-      const t = [l.county, ...(l.signals||[]).map(s=>s.type)];
-      if ((l.legacy_flags||{}).absentee) t.push("Absentee");
-      if ((l.legacy_flags||{}).out_of_state) t.push("Out of State");
-      return t.filter(Boolean).join(", ");
-    }},
-    { label: "APN",              get: l => l.apn || "" },
-    { label: "County",           get: l => l.county || "" },
-    { label: "Signals",          get: l => (l.signals||[]).map(s=>s.type).join(" + ") },
-    { label: "Score",            get: l => l.score||0 },
-    { label: "Equity Est",       get: l => l.equity_est||0 },
-    { label: "Property Address", get: l => l.site_address || "" },
-    { label: "Property City",    get: l => l.site_city || "" },
-    { label: "Property Zip",     get: l => l.site_zip || "" },
-  ];
-  download("ghl.csv", toCSV(state.filtered, cols));
-});
-
-$("#btn-json").addEventListener("click", () => {
-  const json = JSON.stringify(state.filtered, null, 2);
-  const blob = new Blob([json], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "leads-filtered.json";
-  document.body.appendChild(a); a.click(); a.remove();
-});
-
-/* ============================================================
-   Tax Roll Import — client-side CSV cleaner + column mapper
-   ============================================================ */
-
-// Canonical output schema — matches what the user asked for
-const TAXROLL_SCHEMA = [
-  { key: "first_name",       label: "First Name",      required: false,
-    hints: ["first", "fname", "firstname", "first name", "owner first"] },
-  { key: "last_name",        label: "Last Name",       required: true,
-    hints: ["last", "lname", "lastname", "last name", "owner last", "owner name", "owner", "taxpayer", "name"] },
-  { key: "property_address", label: "Property Address",required: true,
-    hints: ["property address", "site address", "situs", "physical address", "property addr", "situs addr", "prop addr"] },
-  { key: "property_city",    label: "Property City",   required: false,
-    hints: ["property city", "site city", "situs city", "physical city", "prop city", "city"] },
-  { key: "property_state",   label: "Property State",  required: false,
-    hints: ["property state", "site state", "situs state", "prop state", "state"] },
-  { key: "property_zip",     label: "Property Zip",    required: false,
-    hints: ["property zip", "site zip", "situs zip", "physical zip", "prop zip", "zip"] },
-  { key: "mailing_address",  label: "Mailing Address", required: true,
-    hints: ["mailing address", "mail address", "owner address", "mail addr", "owner addr", "address1", "mail_addr1"] },
-  { key: "mailing_city",     label: "Mailing City",    required: false,
-    hints: ["mailing city", "mail city", "owner city"] },
-  { key: "mailing_state",    label: "Mailing State",   required: false,
-    hints: ["mailing state", "mail state", "owner state"] },
-  { key: "mailing_zip",      label: "Mailing Zip",     required: false,
-    hints: ["mailing zip", "mail zip", "owner zip"] },
-  { key: "apn",              label: "APN / Parcel",    required: true,
-    hints: ["apn", "parcel", "parcel number", "parcel no", "parcel_id", "parcelid", "parcel num", "taxcode"] },
-  { key: "amount_owed",      label: "Amount Owed",     required: false,
-    hints: ["amount owed", "amount", "total due", "balance", "tax due", "delinquent", "delinquent tax", "owed", "total"] },
-];
-
-const uploadState = {
-  raw: null,          // parsed raw rows from PapaParse
-  headers: [],        // source CSV headers
-  mapping: {},        // target_key -> source_header
-  cleaned: [],        // normalized rows after mapping
-};
-
-function normalizeHeader(h) {
-  return (h||"").toString().toLowerCase().replace(/[_\-.]/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function autoMap(headers) {
-  const mapping = {};
-  const normHeaders = headers.map(h => ({ raw: h, norm: normalizeHeader(h) }));
-  for (const target of TAXROLL_SCHEMA) {
-    // Score each source header against the target's hints
-    let best = null, bestScore = 0;
-    for (const h of normHeaders) {
-      let score = 0;
-      for (const hint of target.hints) {
-        if (h.norm === hint) { score = 100; break; }
-        if (h.norm.includes(hint)) { score = Math.max(score, 50 + hint.length); }
-        if (hint.includes(h.norm) && h.norm.length > 3) { score = Math.max(score, 30 + h.norm.length); }
-      }
-      if (score > bestScore) { best = h.raw; bestScore = score; }
-    }
-    if (best && bestScore >= 40) mapping[target.key] = best;
-  }
-  return mapping;
-}
-
-function splitOwnerName(raw) {
-  if (!raw) return { first: "", last: "" };
-  const s = raw.toString().trim();
-  if (/TRUST|LLC|INC|LTD|CORP|PROPERTIES|HOLDINGS|ESTATE\s+OF/i.test(s)) {
-    return { first: "", last: s };
-  }
-  if (s.includes(",")) {
-    const [last, rest] = s.split(",");
-    const parts = (rest||"").trim().split(/\s+/);
-    return { first: parts[0] || "", last: last.trim() };
-  }
-  const parts = s.split(/\s+/);
-  if (parts.length === 1) return { first: "", last: parts[0] };
-  return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
-}
-
-function parseAmount(v) {
-  if (v == null) return 0;
-  const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
-  return isFinite(n) ? n : 0;
-}
-
-function applyMapping() {
-  const m = uploadState.mapping;
-  const out = [];
-  for (const row of uploadState.raw) {
-    const get = (k) => m[k] ? (row[m[k]] || "").toString().trim() : "";
-    let first = get("first_name");
-    let last  = get("last_name");
-    // If no first_name column but last_name has a full name, split it
-    if (!first && last) {
-      const split = splitOwnerName(last);
-      first = split.first; last = split.last;
-    }
-    out.push({
-      first_name:       first,
-      last_name:        last,
-      property_address: get("property_address"),
-      property_city:    get("property_city"),
-      property_state:   get("property_state") || "AZ",
-      property_zip:     get("property_zip"),
-      mailing_address:  get("mailing_address"),
-      mailing_city:     get("mailing_city"),
-      mailing_state:    get("mailing_state"),
-      mailing_zip:      get("mailing_zip"),
-      apn:              get("apn"),
-      amount_owed:      parseAmount(get("amount_owed")),
-    });
-  }
-  uploadState.cleaned = out;
-  renderPreview();
-}
-
-function renderMappingUI() {
-  const grid = $("#mapping-grid");
-  grid.innerHTML = "";
-  const headers = ["", ...uploadState.headers];
-  for (const target of TAXROLL_SCHEMA) {
-    const label = document.createElement("div");
-    label.className = "target" + (target.required ? " required" : "");
-    label.innerHTML = target.label + (target.required ? ' <span style="font-size:9px">*</span>' : "");
-
-    const sel = document.createElement("select");
-    sel.dataset.target = target.key;
-    for (const h of headers) {
-      const opt = document.createElement("option");
-      opt.value = h; opt.textContent = h || "(unmapped)";
-      if (h === uploadState.mapping[target.key]) opt.selected = true;
-      sel.appendChild(opt);
-    }
-    sel.addEventListener("change", () => {
-      uploadState.mapping[target.key] = sel.value || null;
-      applyMapping();
-      updateMatchIndicators();
-    });
-
-    const ind = document.createElement("div");
-    ind.className = "match-ind";
-    ind.dataset.target = target.key;
-    ind.textContent = uploadState.mapping[target.key] ? "✓ matched" : "—";
-    if (uploadState.mapping[target.key]) ind.classList.add("matched");
-
-    grid.appendChild(label);
-    grid.appendChild(sel);
-    grid.appendChild(ind);
-  }
-  $("#mapping").classList.add("visible");
-}
-
-function updateMatchIndicators() {
-  $$("#mapping-grid .match-ind").forEach(el => {
-    const k = el.dataset.target;
-    if (uploadState.mapping[k]) { el.textContent = "✓ matched"; el.classList.add("matched"); }
-    else { el.textContent = "—"; el.classList.remove("matched"); }
-  });
-}
-
-function renderPreview() {
-  const rows = uploadState.cleaned.slice(0, 50);
-  const cols = TAXROLL_SCHEMA.map(s => s.key);
-  const head = `<tr>${TAXROLL_SCHEMA.map(s => `<th>${s.label}</th>`).join("")}</tr>`;
-  const body = rows.map(r =>
-    `<tr>${cols.map(c => `<td>${(r[c]||"").toString().slice(0, 60)}</td>`).join("")}</tr>`
-  ).join("");
-  $("#preview-thead").innerHTML = head;
-  $("#preview-tbody").innerHTML = body;
-  // stats
-  $("#stat-rows").textContent = uploadState.cleaned.length.toLocaleString();
-  $("#stat-apn").textContent  = uploadState.cleaned.filter(r => r.apn).length.toLocaleString();
-  $("#stat-mail").textContent = uploadState.cleaned.filter(r => r.mailing_address).length.toLocaleString();
-  const owed = uploadState.cleaned.reduce((s, r) => s + (r.amount_owed || 0), 0);
-  $("#stat-owed").textContent = "$" + Math.round(owed).toLocaleString();
-  $("#preview").classList.add("visible");
-  $("#upload-download").style.display = "inline-block";
-  $("#upload-merge").style.display    = "inline-block";
-  $("#upload-clear").style.display    = "inline-block";
-}
-
-function handleFile(file) {
-  if (!file) return;
-  Papa.parse(file, {
-    header: true,
-    skipEmptyLines: true,
-    dynamicTyping: false,
-    complete: (res) => {
-      uploadState.raw     = res.data;
-      uploadState.headers = res.meta.fields || [];
-      uploadState.mapping = autoMap(uploadState.headers);
-      renderMappingUI();
-      applyMapping();
-    },
-    error: (err) => {
-      alert("Could not parse that file: " + err.message);
-    }
-  });
-}
-
-// Wire uploader buttons
-$("#btn-upload").addEventListener("click", () => {
-  $("#upload-modal").classList.add("open");
-});
-$("#upload-close").addEventListener("click", () => {
-  $("#upload-modal").classList.remove("open");
-});
-$("#upload-clear").addEventListener("click", () => {
-  uploadState.raw = null; uploadState.cleaned = [];
-  $("#mapping").classList.remove("visible");
-  $("#preview").classList.remove("visible");
-  $("#upload-download").style.display = "none";
-  $("#upload-merge").style.display    = "none";
-  $("#upload-clear").style.display    = "none";
-  $("#file-input").value = "";
-});
-
-// Dropzone behavior
-const dz = $("#dropzone");
-dz.addEventListener("click", () => $("#file-input").click());
-dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("dragging"); });
-dz.addEventListener("dragleave", () => dz.classList.remove("dragging"));
-dz.addEventListener("drop", (e) => {
-  e.preventDefault(); dz.classList.remove("dragging");
-  handleFile(e.dataTransfer.files[0]);
-});
-$("#file-input").addEventListener("change", (e) => handleFile(e.target.files[0]));
-
-// Download clean CSV
-$("#upload-download").addEventListener("click", () => {
-  const cols = TAXROLL_SCHEMA.map(s => ({ label: s.label, get: r => r[s.key] }));
-  download("tax_roll_cleaned.csv", toCSV(uploadState.cleaned, cols));
-});
-
-// Merge as Tax Delinquent signal into leads
-$("#upload-merge").addEventListener("click", () => {
-  const county = $("#upload-county").value;
-  const rows = uploadState.cleaned.filter(r => r.apn);
-  if (rows.length === 0) {
-    alert("No rows with APN — can't merge. Leads are keyed by APN.");
-    return;
-  }
-  // Build an APN -> amount_owed map
-  const apnMap = {};
-  for (const r of rows) {
-    const apn = (r.apn || "").replace(/[^A-Z0-9]/gi, "").toUpperCase();
-    if (apn) apnMap[apn] = r;
-  }
-  // For each existing lead, if its APN is in the import, inject a Tax Delinquent signal
-  let hits = 0;
-  for (const lead of state.leads) {
-    const norm = (lead.apn_norm || lead.apn || "").replace(/[^A-Z0-9]/gi, "").toUpperCase();
-    if (apnMap[norm]) {
-      const r = apnMap[norm];
-      // Skip if already has a Tax Delinquent signal (don't duplicate)
-      if (!(lead.signals||[]).some(s => s.type === "Tax Delinquent")) {
-        lead.signals = lead.signals || [];
-        lead.signals.push({
-          type:    "Tax Delinquent",
-          doc_code:"TD-IMPORT",
-          date:    new Date().toISOString().slice(0,10),
-          grantor: lead.owner,
-          grantee: null,
-          amount_owed: r.amount_owed || 0,
-        });
-        lead.signal_count = lead.signals.length;
-        // Mirror backend scoring: SIGNAL_WEIGHTS["Tax Delinquent"]=30,
-        // STACK_BONUS=25 per additional signal on the same APN
-        lead.score = (lead.score || 0) + 30;
-        if (lead.signal_count >= 2) lead.score += 25;
-        // Recompute patterns/stack/tier so the import can move tiers —
-        // Tax Delinquent fires the "Tax Pressure" pattern (backend parity)
-        lead.patterns = lead.patterns || [];
-        if (!lead.patterns.includes("Tax Pressure")) lead.patterns.push("Tax Pressure");
-        lead.stack_count = lead.patterns.length;
-        lead.tier = lead.stack_count >= 4 ? "hot"
-                  : lead.stack_count === 3 ? "strong"
-                  : lead.stack_count === 2 ? "likely"
-                  : lead.stack_count === 1 ? "watch" : "cold";
-        hits++;
-      }
-    }
-  }
-  alert(`Merged ${hits} tax delinquent signals into existing leads.\n\n${rows.length - hits} rows had APNs not in the current parcel master (probably parcels outside Maricopa/Pima, or APNs in a format we didn't recognize).`);
-  // Tiers/patterns may have changed — rebuild the derived UI, not just the table
-  buildSignalChips();
-  decorateFilterCounts();
-  computeQuickListCounts();
-  applyFilters();
-  $("#upload-modal").classList.remove("open");
-});
-
-/* ============================================================
-   Go
-   ============================================================ */
-loadData();
+load();
 </script>
-</body>
-</html>

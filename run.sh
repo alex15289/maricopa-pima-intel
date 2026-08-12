@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 #
-# Maricopa + Pima Intel — full refresh
-# ------------------------------------
-# Pulls both parcel masters, scrapes recent recorder signals, builds the
-# ranked lead list, and exports Skip Trace + GHL CSVs.
+# Maricopa + Pima Document Intel — full refresh (UCIF v5.5.0, doc-type model)
+# ---------------------------------------------------------------------------
+# Pulls both parcel masters (enrichment), scrapes recorded documents from each
+# county source, and builds the doc-type lead list. Every lead is a real
+# recorded document; the lead type IS the document type.
 #
 # Usage:
-#   ./run.sh                       # full refresh, default 30-day signal window
-#   DAYS=90 ./run.sh               # longer signal window
-#   SKIP_PARCELS=1 ./run.sh        # signals + pipeline only (parcel master already fresh)
+#   ./run.sh                       # full refresh, 30-day recorder window
+#   DAYS=90 ./run.sh               # wider Maricopa recorder window
+#   SKIP_PARCELS=1 ./run.sh        # docs + build only (parcel master fresh)
 
 set -euo pipefail
 
@@ -17,36 +18,32 @@ SKIP_PARCELS="${SKIP_PARCELS:-0}"
 PYTHON="${PYTHON:-python}"
 
 cd "$(dirname "$0")"
+export PYTHONPATH=.
 
 echo "======================================"
-echo "Maricopa + Pima Intel — full refresh"
-echo "  date window: $DAYS days"
+echo "Maricopa + Pima Document Intel — refresh"
+echo "  recorder window: $DAYS days"
 echo "  skip parcel master: $SKIP_PARCELS"
 echo "======================================"
-echo
 
 if [[ "$SKIP_PARCELS" != "1" ]]; then
-  echo "[1/4] Maricopa parcel master..."
+  echo "[1/5] Maricopa parcel master (enrichment)..."
   $PYTHON scrapers/maricopa_parcels.py
-
-  echo
-  echo "[2/4] Pima parcel master..."
+  echo "[2/5] Pima parcel master (enrichment)..."
   $PYTHON scrapers/pima_parcels.py
 else
-  echo "[1-2/4] Parcel masters skipped (SKIP_PARCELS=1)"
+  echo "[1-2/5] Parcel masters skipped (SKIP_PARCELS=1)"
 fi
 
-echo
-echo "[3/4] Recorder signals (last $DAYS days)..."
-$PYTHON scrapers/maricopa_recorder.py --days "$DAYS"
-$PYTHON scrapers/pima_recorder.py    --days "$DAYS"
+echo "[3/5] Maricopa recorder documents (last $DAYS days)..."
+$PYTHON scrapers/maricopa_recorder_api.py --days "$DAYS" || echo "  (recorder failed — fail-soft)"
+
+echo "[4/5] Pima deed transfers (GIS layer 12) + treasurer feed..."
+$PYTHON scrapers/pima_deeds.py --days 90 || echo "  (pima deeds failed — fail-soft)"
+$PYTHON pipeline/enrich_treasurer.py || echo "  (treasurer translator failed — fail-soft)"
+
+echo "[5/5] Build doc-type leads..."
+$PYTHON -m pipeline.build_docleads
 
 echo
-echo "[4/4] Build leads + export CSVs..."
-$PYTHON pipeline/build_leads.py
-$PYTHON pipeline/export_csv.py
-
-echo
-echo "Done."
-echo "  Dashboard: open index.html"
-echo "  Exports:   data/export_skiptrace.csv, data/export_ghl.csv"
+echo "Done. Dashboard: open index.html"

@@ -75,21 +75,38 @@ jobs:
         timeout-minutes: 90
         run: PYTHONPATH=. python scrapers/pima_parcels.py
 
-      - name: Maricopa recorder signals (REST API, fail-soft)
+      - name: Compute rolling doc-store cache key
+        id: day
+        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cumulative document stores (rolling daily)
+        # doc stores are gitignored + regenerable, but the incremental/retention
+        # model (esp. CQ/TD matching an NS recorded weeks earlier) needs them to
+        # persist across runs. Date-keyed with a prefix restore-key = "load the
+        # most recent prior store, merge today's scrape, save under today's key".
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/maricopa_recorder_docs.jsonl
+            data/pima_recorder_docs.jsonl
+            data/pima_tax_docs.jsonl
+          key: docstores-${{ steps.day.outputs.day }}
+          restore-keys: docstores-
+
+      - name: Maricopa recorder documents (REST API, fail-soft)
         continue-on-error: true
         run: PYTHONPATH=. python scrapers/maricopa_recorder_api.py --days "${{ github.event.inputs.days || '30' }}"
 
-      - name: Match recorder names to parcel APNs (fail-soft)
+      - name: Pima deed transfers (GIS layer 12, fail-soft)
         continue-on-error: true
-        run: |
-          if [ -f data/maricopa_recorder_raw.jsonl ]; then
-            PYTHONPATH=. python pipeline/match_recorder.py
-          else
-            echo "no recorder raw file — skipping match step"
-          fi
+        run: PYTHONPATH=. python scrapers/pima_deeds.py --days 90
 
-      - name: Build leads.json (scoring, tiers, daily rotation)
-        run: PYTHONPATH=. python pipeline/build_leads.py
+      - name: Pima treasurer delinquency (feed-ready; no-op if file absent)
+        continue-on-error: true
+        run: PYTHONPATH=. python pipeline/enrich_treasurer.py
+
+      - name: Build leads.json (doc-type leads, UCIF v5.5.0)
+        run: PYTHONPATH=. python -m pipeline.build_docleads
 
       - name: Sanity check — refuse to commit a gutted dashboard
         run: |
@@ -97,17 +114,22 @@ jobs:
           import json, sys
           d = json.load(open("data/leads.json"))
           total = d.get("total_leads", 0)
-          shipped = len(d.get("leads", []))
-          print(f"total_leads={total}  shipped={shipped}  rotation={d.get('daily_rotation_size')}")
-          if total < 100_000 or shipped < 10_000:
-              sys.exit("lead pool suspiciously small — parcel pull likely failed; refusing to commit")
+          counts = d.get("doc_type_counts", {})
+          types = sum(len(v) for v in counts.values())
+          print(f"total_leads={total}  doc_types={types}  "
+                f"resolved={d.get('resolved')}  range={d.get('date_range')}")
+          # doc-type leads are far fewer than the old score pool; guard against
+          # a total wipeout (both document stores empty) rather than a size floor
+          if total < 500 or types < 3:
+              sys.exit("document pool suspiciously small — a scraper likely failed; refusing to commit")
           EOF
 
       - name: Commit refreshed data
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/leads.json data/_rotation_state.json
+          # cumulative doc stores are gitignored (regenerable); only leads.json ships
+          git add data/leads.json
           if git diff --staged --quiet; then
             echo "No changes to commit."
           else
