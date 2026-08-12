@@ -151,7 +151,9 @@
 
     <div class="center">
       <div class="tbar"><span id="foot">—</span>
-        <button class="btn ghost" id="ex-skip" style="margin-left:auto;padding:3px 10px;font-size:11px">Skip Trace CSV</button>
+        <label style="margin-left:auto;font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px;cursor:pointer" title="Group leads resolved-to-a-property first; newest within each group">
+          <input type="checkbox" id="f-resfirst" checked style="accent-color:var(--accent)"> Resolved first</label>
+        <button class="btn ghost" id="ex-skip" style="padding:3px 10px;font-size:11px">Skip Trace CSV</button>
         <button class="btn ghost" id="ex-ghl" style="padding:3px 10px;font-size:11px">GHL CSV</button>
         <span id="sortlbl"></span></div>
       <div class="tablewrap">
@@ -191,7 +193,7 @@ const state = {
   sort:{key:"recorded_date", dir:-1},
   // docTypesOn = whitelist of currently-shown doc types (initialised after load
   // to all types except DEFAULT_OFF). A lead shows iff its type is in the set.
-  f:{ county:"all", docTypesOn:null, from:"", to:"", resolved:"all",
+  f:{ county:"all", docTypesOn:null, from:"", to:"", resolved:"all", resolvedFirst:true,
       ann:new Set(), fresh:false, foreclosure:false, unresolved:false, search:"" }
 };
 
@@ -265,6 +267,7 @@ function bind() {
   });
   const q=(id,key)=>$(id).onclick=()=>{ state.f[key]=!state.f[key]; $(id).classList.toggle("on",state.f[key]); apply(); };
   q("#q-fresh","fresh"); q("#q-foreclosure","foreclosure"); q("#q-unresolved","unresolved");
+  $("#f-resfirst").onchange=e=>{ state.f.resolvedFirst=e.target.checked; apply(); };
   $("#f-search").oninput=e=>{ state.f.search=e.target.value.toLowerCase().trim(); apply(); };
   $("#f-from").onchange=e=>{ state.f.from=e.target.value; apply(); };
   $("#f-to").onchange=e=>{ state.f.to=e.target.value; apply(); };
@@ -302,6 +305,13 @@ function apply() {
   state.filtered = state.leads.filter(matches);
   const {key,dir}=state.sort;
   state.filtered.sort((a,b)=>{
+    // Default grouping: resolved (address-bearing) leads first, then freshness
+    // within each group. Keeps newest-on-top meaningful without letting the
+    // recorder's name-index lag fill the first screen with unresolved rows.
+    if (state.f.resolvedFirst) {
+      const ra=a.resolved?0:1, rb=b.resolved?0:1;
+      if (ra!==rb) return ra-rb;
+    }
     let av=a[key]??"", bv=b[key]??"";
     return (av<bv?-1:av>bv?1:0)*dir;
   });

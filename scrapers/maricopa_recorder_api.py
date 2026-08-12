@@ -94,6 +94,8 @@ PAGE_SIZE = 200        # API hard limit: pageSize/maxResults <= 200
 REQUEST_DELAY = 0.55
 MAX_RETRIES = 4
 MAX_PAGES_PER_WINDOW = 60   # 12K records/window safety ceiling
+RECHECK_DAYS = 14          # re-fetch details for still-nameless docs recorded
+                           # within this window (recorder name-index lag backfill)
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -234,23 +236,46 @@ def run(codes: list[str], days_back: int, retention_days: int, fetch_details: bo
     log.info(f"cumulative store: {len(store):,} existing docs")
 
     session = make_session()
-    new_count = 0
+    # Backfill window: the recorder's party-name index lags recording by a day
+    # or two, so a doc pulled the day it was recorded often comes back with no
+    # names. Re-fetch details for docs already in the store that are still
+    # nameless and were recorded within this many days — until they resolve or
+    # age out. Without this the scraper only pulls forward and those docs stay
+    # permanently nameless (and therefore unresolvable).
+    recheck_after = (end - timedelta(days=RECHECK_DAYS)).isoformat()
+
+    new_count = recheck_count = 0
     for code in codes:
         meta = DOC_TYPES.get(code, {"label": code})
         results = search_code(session, code, begin, end)
-        fresh = [r for r in results if str(r.get("recordingNumber", "")) not in store]
-        log.info(f"▶ {code} ({meta['label']}): {len(results):,} in window, {len(fresh):,} new")
-        for i, raw in enumerate(fresh, 1):
-            rn = str(raw.get("recordingNumber", ""))
+        to_detail = []      # (raw, is_new)
+        for r in results:
+            rn = str(r.get("recordingNumber", ""))
             if not rn:
                 continue
+            existing = store.get(rn)
+            if existing is None:
+                to_detail.append((r, True))
+            elif not existing.get("names") and (existing.get("recorded_date") or "") >= recheck_after:
+                to_detail.append((r, False))   # recent + still nameless -> retry
+        n_new = sum(1 for _, isnew in to_detail if isnew)
+        n_re = len(to_detail) - n_new
+        log.info(f"▶ {code} ({meta['label']}): {len(results):,} in window, "
+                 f"{n_new:,} new, {n_re:,} nameless re-checks")
+        for i, (raw, isnew) in enumerate(to_detail, 1):
+            rn = str(raw.get("recordingNumber", ""))
             names, restricted = ([], False)
             if fetch_details:
                 names, restricted = fetch_names(session, rn)
             store[rn] = build_record(raw, code, names, restricted)
-            new_count += 1
+            if isnew:
+                new_count += 1
+            else:
+                recheck_count += 1
+                if names:
+                    pass  # resolved on retry
             if i % 100 == 0:
-                log.info(f"    {code}: {i}/{len(fresh)} detailed")
+                log.info(f"    {code}: {i}/{len(to_detail)} detailed")
 
     # Prune to retention window
     cutoff = (end - timedelta(days=retention_days)).isoformat()
@@ -258,10 +283,16 @@ def run(codes: list[str], days_back: int, retention_days: int, fetch_details: bo
             if (r.get("recorded_date") or "9999") >= cutoff}
     pruned = len(store) - len(kept)
 
+    still_nameless = sum(1 for r in kept.values() if not r.get("names")
+                         and (r.get("recorded_date") or "") >= recheck_after)
     with STORE_PATH.open("w") as f:
         for rec in sorted(kept.values(), key=lambda r: r.get("recorded_date") or "", reverse=True):
             f.write(json.dumps(rec) + "\n")
-    log.info(f"✓ store: {len(kept):,} docs ({new_count:,} new, {pruned:,} pruned) → {STORE_PATH}")
+    log.info(f"✓ store: {len(kept):,} docs ({new_count:,} new, {recheck_count:,} re-checked, "
+             f"{pruned:,} pruned) → {STORE_PATH}")
+    if still_nameless:
+        log.info(f"  {still_nameless:,} recent docs still nameless "
+                 f"(recorder index lag; will retry within {RECHECK_DAYS}d)")
 
 
 def main(argv=None):
