@@ -137,70 +137,78 @@ def enter_doc_type_search(page) -> None:
     assert_session(page)
 
 
-def run_search(page, label: str, begin: str, end: str) -> int:
-    """Filter to one doc type via the real-keystroke autocomplete, set the date
-    range, submit. Returns the total result count. Raises SessionExpired."""
+# The doc-type autocomplete combo only commits through fragile real-keystroke
+# interaction, and even then the server search is stateful/laggy. Far more
+# robust: run an UNFILTERED date-range search (the grid renders every doc type
+# with its label) and filter to the approved types in code. A wide window
+# exceeds the render cap, so we chunk the date range into CHUNK_DAYS-day slices.
+CHUNK_DAYS = 7           # ~2,900 records/slice — renders and paginates cleanly
+PAGE_SIZE_GUESS = 100    # portal renders 100 rows/page
+
+# Structural parser + paginator, run inside the page. Reads each result row's
+# labeled columns (Recording Date / Grantor (n) / Grantee (n)) — innerText regex
+# fails on fetched pages (no layout), so we walk the column elements directly.
+_PAGE_JS = r"""
+async (args) => {
+  const [ctx, from, to] = args;
+  const parseRow = (row) => {
+    const seq = (row.textContent.match(/\b(\d{11})\b/) || [])[1];
+    const type = ((row.textContent.match(/\d{11}\s*[•·]\s*([A-Z][A-Z0-9 \/&.\-]+)/) || [])[1] || '').trim();
+    const els = [...row.querySelectorAll('.selfServiceSearchResultColumn, .selfServiceSearchResultCollapsed, .selfServiceSearchFullResult')];
+    let mode = null, dt = ''; const g = [], e = [];
+    for (const el of els) {
+      const cls = el.className || '', txt = el.textContent.trim();
+      if (/selfServiceSearchResultColumn/.test(cls)) {
+        mode = /Grantor/i.test(txt) ? 'g' : /Grantee/i.test(txt) ? 'e' : /Recording Date/i.test(txt) ? 'd' : null;
+        continue;
+      }
+      if (!txt || txt === 'View') continue;
+      if (mode === 'd') dt = dt || (txt.match(/[0-9\/]+/) || [''])[0];
+      else if (mode === 'g') g.push(txt);
+      else if (mode === 'e') e.push(txt);
+    }
+    return { seq, type, dt, grantors: g, grantees: e };
+  };
+  const all = [];
+  for (let p = 1; p <= 60; p++) {
+    const r = await fetch(`/web/searchResults/${ctx}?page=${p}&_=` + Date.now(), { cache: 'no-store' });
+    if (/user\/disclaimer/i.test(r.url)) return { expired: true, records: all };
+    const html = await r.text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const rows = [...doc.querySelectorAll('.selfServiceSearchRowRight')].filter(x => /\d{11}/.test(x.textContent));
+    if (!rows.length) break;
+    for (const row of rows) { const rec = parseRow(row); if (rec.seq) all.push(rec); }
+  }
+  return { expired: false, records: all };
+}
+"""
+
+
+def _ctx(page) -> str:
+    import re
+    m = re.search(r"DOCSEARCH\d+S\d+", page.url)
+    return m.group(0) if m else ""
+
+
+def search_and_collect(page, begin: str, end: str) -> list[dict]:
+    """Unfiltered date-range search, then paginate + structurally parse all rows.
+    Returns every record (all doc types) in the window. Raises SessionExpired."""
     enter_doc_type_search(page)
-    combo = page.locator("#field_selfservice_documentTypes-containsInput")
-    combo.click()
-    combo.fill("")
-    combo.type(label, delay=40)                 # real keystrokes trigger the AJAX
-    # click the exact-match option in the autocomplete dropdown
-    page.wait_for_timeout(900)
-    option = page.locator("#field_selfservice_documentTypes-aclist li, "
-                          ".ui-menu-item, [role=option]").filter(has_text=label).first
-    option.click(timeout=8000)
     page.fill("#field_RecordingDateID_DOT_StartDate", begin)
     page.fill("#field_RecordingDateID_DOT_EndDate", end)
     page.click("#searchButton")
-    page.wait_for_timeout(2500)
+    page.wait_for_timeout(3500)
     assert_session(page)
-    total = page.evaluate("""() => {
-        const m = document.body.innerText.match(/for\\s+(\\d[\\d,]*)\\s+Total Results/i);
-        return m ? parseInt(m[1].replace(/,/g,'')) : 0;
-    }""")
-    return total
-
-
-def parse_page(page) -> list[dict]:
-    """Extract the rendered result rows: seq#, doc type, recording datetime,
-    grantor(s), grantee(s). Structural DOM read (labels 'Grantor'/'Grantee')."""
-    return page.evaluate("""() => {
-        const out = [];
-        // each record starts with an 11-digit sequence number heading
-        const heads = [...document.querySelectorAll('h1,h2,h3,h4,a,div,span')]
-            .filter(e => /^\\d{11}\\s*$/.test((e.textContent||'').trim()));
-        for (const h of heads) {
-            // climb to the record container (holds Grantor + Grantee)
-            let rec = h;
-            for (let i=0;i<6 && rec && !/Grantor/.test(rec.innerText||''); i++) rec = rec.parentElement;
-            if (!rec) continue;
-            const t = rec.innerText.replace(/\\u00a0/g,' ');
-            const seq = (h.textContent||'').trim();
-            const type = ((t.match(/·\\s*([A-Z][A-Z0-9 \\/&.\\-]+)/)||[])[1]||'').trim();
-            const dt = (t.match(/Recording Date\\s*([0-9\\/]+\\s*[0-9:]*\\s*[AP]?M?)/i)||[])[1]||'';
-            const gr = (t.match(/Grantor[^\\n]*\\n([\\s\\S]*?)\\n\\s*Grantee/i)||[])[1]||'';
-            const ge = (t.match(/Grantee[^\\n]*\\n([\\s\\S]*?)(\\n\\s*(Related|Recording|View|$))/i)||[])[1]||'';
-            const clean = s => s.split('\\n').map(x=>x.trim()).filter(Boolean);
-            out.push({seq, type, dt, grantors: clean(gr), grantees: clean(ge)});
-        }
-        // dedupe by seq
-        const seen = new Set(); return out.filter(r => r.seq && !seen.has(r.seq) && seen.add(r.seq));
-    }""")
-
-
-def next_page(page) -> bool:
-    """Advance to the next results page if one exists."""
-    nxt = page.locator("a[aria-label='Next'], a.next, button[aria-label='Next'], "
-                       ".pagination-next:not(.disabled)").first
-    try:
-        if nxt.count() and nxt.is_enabled():
-            nxt.click()
-            page.wait_for_timeout(1500)
-            return True
-    except Exception:
-        pass
-    return False
+    res = page.evaluate(_PAGE_JS, [_ctx(page), begin, end])
+    if res.get("expired"):
+        raise SessionExpired()
+    # dedupe by seq within the window
+    seen, out = set(), []
+    for r in res["records"]:
+        if r["seq"] and r["seq"] not in seen:
+            seen.add(r["seq"])
+            out.append(r)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -257,18 +265,30 @@ def party_check(label: str, records: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+def _date_chunks(begin: date, end: date, size: int):
+    """Yield (start,end) MM/DD/YYYY slices of <= size days across [begin,end]."""
+    cur = begin
+    while cur <= end:
+        stop = min(cur + timedelta(days=size - 1), end)
+        yield cur.strftime("%m/%d/%Y"), stop.strftime("%m/%d/%Y"), cur.isoformat()
+        cur = stop + timedelta(days=1)
+
+
 def run(labels: list[str], days: int) -> None:
     end = date.today()
     begin = end - timedelta(days=days)
-    begin_s, end_s = begin.strftime("%m/%d/%Y"), end.strftime("%m/%d/%Y")
     run_date = end.isoformat()
     state = load_state(run_date)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    # fresh file for a new run date; append when resuming the same day
+    # APPROVED = portal grid label -> meta. We search UNFILTERED and keep only
+    # these labels, so we never touch the fragile doc-type combo.
+    approved = {lbl: DOC_TYPES[lbl] for lbl in labels}
+
     mode = "a" if state["completed"] and OUT_PATH.exists() else "w"
     out_f = OUT_PATH.open(mode)
     written = 0
+    per_type_samples: dict[str, list[dict]] = {}
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=False)
@@ -281,48 +301,35 @@ def run(labels: list[str], days: int) -> None:
         print("  reCAPTCHA, then come back here and press Enter.")
         print("=" * 68)
         input("  [Enter] once you've accepted the disclaimer... ")
-
-        # confirm the human actually got past the disclaimer
         try:
             enter_doc_type_search(page)
         except SessionExpired:
             sys.exit("SESSION not accepted — still on the disclaimer. Re-run and accept it.")
-        log(f"session live. window {begin_s}..{end_s} ({days}d). "
-            f"{len(labels)} doc types, {len(state['completed'])} already done.")
 
+        chunks = list(_date_chunks(begin, end, CHUNK_DAYS))
+        log(f"session live. window {begin}..{end} ({days}d) in {len(chunks)} "
+            f"{CHUNK_DAYS}-day chunks. keeping {len(approved)} doc types.")
         try:
-            for label in labels:
-                if label in state["completed"]:
-                    log(f"▶ {label}: already done this run — skipping")
+            for a, b, key in chunks:
+                if key in state["completed"]:
+                    log(f"▶ chunk {a}..{b}: already done this run — skipping")
                     continue
-                meta = DOC_TYPES[label]
-                try:
-                    total = run_search(page, label, begin_s, end_s)
-                except SessionExpired:
-                    raise
-                except Exception as e:
-                    log(f"▶ {label}: search failed ({e}) — skipping, will retry next run")
-                    continue
-
-                records: list[dict] = []
-                pages = 0
-                while True:
-                    for raw in parse_page(page):
-                        rec = build_record(raw, meta, label)
-                        if rec:
-                            records.append(rec)
-                    pages += 1
-                    assert_session(page)
-                    if not next_page(page) or pages >= 60:
-                        break
-
-                for rec in records:
+                raw = search_and_collect(page, a, b)          # all types in window
+                kept = 0
+                for r in raw:
+                    meta = approved.get(r.get("type"))
+                    if not meta:
+                        continue
+                    rec = build_record(r, meta, r["type"])
+                    if not rec:
+                        continue
                     out_f.write(json.dumps(rec) + "\n")
+                    kept += 1
+                    per_type_samples.setdefault(rec["doc_type"], []).append(rec)
                 out_f.flush()
-                written += len(records)
-                log(f"▶ {label}: {total} reported, {len(records)} parsed ({pages} pages)")
-                party_check(label, records)
-                state["completed"].append(label)
+                written += kept
+                log(f"▶ chunk {a}..{b}: {len(raw)} docs in window, {kept} approved kept")
+                state["completed"].append(key)
                 save_state(state)
 
         except SessionExpired:
@@ -330,7 +337,7 @@ def run(labels: list[str], days: int) -> None:
             save_state(state)
             print("\n" + "!" * 68)
             print("  SESSION_EXPIRED — the portal bounced back to the disclaimer.")
-            print(f"  Progress saved ({written} records, {len(state['completed'])} types done).")
+            print(f"  Progress saved ({written} records, {len(state['completed'])}/{len(chunks)} chunks).")
             print("  Re-run the same command, re-accept the disclaimer, and it resumes.")
             print("!" * 68)
             browser.close()
@@ -339,14 +346,17 @@ def run(labels: list[str], days: int) -> None:
         out_f.close()
         browser.close()
 
-    # stamp the run so the pipeline/dashboard can show freshness honestly
+    # per-type party check (flag the restitution/medical trap signature)
+    for dt, recs in sorted(per_type_samples.items()):
+        party_check(dt, recs)
+
     (DATA_DIR / "_pima_recorder_last_run.json").write_text(json.dumps({
         "last_run": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "run_date": run_date, "window_days": days,
-        "types": state["completed"], "records": written,
+        "types": sorted(per_type_samples), "records": written,
     }, indent=1))
     log(f"✓ done. {written} records → {OUT_PATH.name}. "
-        f"{len(state['completed'])}/{len(labels)} types complete.")
+        f"{len(state['completed'])}/{len(chunks)} chunks complete.")
 
 
 def main(argv=None):

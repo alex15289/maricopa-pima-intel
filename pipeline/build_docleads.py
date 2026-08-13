@@ -247,11 +247,19 @@ def resolve_recorder_docs(docs: list[dict], parcels: list[dict], county: str) ->
     for Maricopa (DEED_NUMBER) and Pima (SEQ_NUM_D → deed_number)."""
     if not docs:
         return {"total": 0, "by_deed": 0, "by_name": 0}
+    def _norm_deed(dn) -> str:
+        # SEQ_NUM_D/DEED_NUMBER may arrive as a float ("20261870426.0"); normalize
+        # to the integer string the recorder's sequence number uses.
+        s = str(dn).strip()
+        if s.endswith(".0"):
+            s = s[:-2]
+        return s
+
     deed_index: dict[str, dict] = {}
     for p in parcels:
         dn = p.get("deed_number")
-        if dn:
-            deed_index[str(dn).strip()] = p
+        if dn not in (None, "", 0, "0"):
+            deed_index[_norm_deed(dn)] = p
     exact_idx, by_last_idx = build_name_index(parcels)
     repeat = detect_repeat_signers(docs)
     log.info(f"{county}: deed# index {len(deed_index):,} parcels; "
