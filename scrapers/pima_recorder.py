@@ -7,8 +7,8 @@ behind a once-per-session disclaimer + reCAPTCHA, and the doc-type filter only
 commits through a real-keystroke autocomplete. So this scraper is ATTENDED:
 
     ONE human action — you accept the disclaimer and solve the reCAPTCHA in the
-    browser window this opens. Then press Enter in the terminal and the script
-    drives every search itself.
+    browser window this opens. The script watches that window, detects the
+    acceptance itself, and then drives every search — no terminal interaction.
 
 This runs LOCALLY and ON DEMAND (a wholesaler runs it when they want fresh Pima
 recorder distress docs). It is deliberately NOT part of the 4am GitHub Actions
@@ -127,14 +127,113 @@ def assert_session(page) -> None:
         raise SessionExpired()
 
 
-def enter_doc_type_search(page) -> None:
-    """Home -> Official Records Search -> Document Type Search (mints the ctx)."""
-    page.goto("https://pimacountyaz-web.tylerhost.net/web/", wait_until="domcontentloaded")
+def wait_for_acceptance(page, timeout_s: int = 900) -> None:
+    """Block until the disclaimer is accepted IN THIS BROWSER — on acceptance
+    the page navigates off /user/disclaimer. Watching the page (rather than
+    trusting a terminal keypress) makes an accept in the wrong window
+    impossible to mistake for success: we just keep waiting and keep saying so."""
+    log("waiting for you to accept the disclaimer in the Chrome-for-Testing window...")
+    waited = 0
+    while DISCLAIMER_RX in page.url:
+        if waited >= timeout_s:
+            sys.exit(f"Gave up after {timeout_s // 60} min waiting for the disclaimer.")
+        page.wait_for_timeout(2000)
+        waited += 2
+        if waited % 30 == 0:
+            log(f"  still waiting ({waited}s) — the accept + captcha must happen in the "
+                f"'Chrome for Testing' window this script opened, not your regular Chrome")
+    page.wait_for_load_state("domcontentloaded")
+    log("disclaimer accepted — session live.")
+
+
+def _visible_clickables(page) -> list[str]:
+    """Texts of links/buttons on the page — logged when menu navigation fails
+    so a failed run says exactly what the portal showed instead."""
+    try:
+        return page.evaluate(
+            "() => [...document.querySelectorAll('a, button, [onclick]')]"
+            ".filter(e => e.offsetParent !== null)"
+            ".map(e => e.textContent.trim().replace(/\\s+/g,' '))"
+            ".filter(t => t && t.length < 80)")
+    except Exception:
+        return []
+
+
+def _click_menu(page, text: str):
+    """Click a menu entry by (lax) text and return the page the UI continued
+    on — the Tyler portal sometimes opens the next step in a new tab, which a
+    single page handle would never see."""
+    loc = page.get_by_text(text, exact=False).first
+    loc.wait_for(state="visible", timeout=60000)
+    before = list(page.context.pages)
+    loc.click()
+    page.wait_for_timeout(2000)
+    new = [p for p in page.context.pages if p not in before]
+    if new:
+        new[0].wait_for_load_state("domcontentloaded")
+        log(f"    (portal opened a new tab for '{text}' — following it)")
+        return new[0]
+    return page
+
+
+def _answer_continue_modal(page) -> None:
+    """Tyler interposes a session-restore modal ('Yes - Continue / No - Start
+    Over') that blocks the search menu from rendering until answered. It can
+    appear on any /web/ load, so every navigation must clear it."""
+    try:
+        page.wait_for_timeout(1500)
+        cont = page.get_by_text("Yes - Continue", exact=False).first
+        if cont.count() and cont.is_visible():
+            log("    (answering the portal's continue-session modal)")
+            cont.click()
+            page.wait_for_timeout(1500)
+    except Exception:
+        pass
+
+
+# Direct URL of the Official Records Search submenu (the action group that
+# lists Document Type Search). The home page's menu tiles are rendered from a
+# /web/homeActions XHR that never renders in an automated browser session, but
+# this action-group page is server-routed and mints its session instance (S1)
+# on first visit — so we skip the tiles entirely and land here.
+ACTION_GROUP_URL = "https://pimacountyaz-web.tylerhost.net/web/action/ACTIONGROUP55S1"
+
+
+def enter_doc_type_search(page):
+    """Official Records action group -> Document Type Search (mints the ctx).
+    Returns the page the search UI lives on (may differ from the one passed in
+    if the portal opened a tab)."""
+    page.goto(ACTION_GROUP_URL, wait_until="domcontentloaded")
     assert_session(page)
-    page.get_by_text("Official Records Search - Web", exact=False).first.click()
-    page.get_by_text("Document Type Search - Web", exact=False).first.click()
-    page.wait_for_selector("#field_selfservice_documentTypes-containsInput", timeout=15000)
+    _answer_continue_modal(page)
+    try:
+        try:
+            page.get_by_text("Document Type Search", exact=False).first.wait_for(
+                state="visible", timeout=15000)
+        except PWTimeout:
+            # bounced ("your options have changed") — fall back to the tiles
+            log("    direct action-group route bounced; trying the home menu tiles")
+            page.goto("https://pimacountyaz-web.tylerhost.net/web/", wait_until="domcontentloaded")
+            assert_session(page)
+            _answer_continue_modal(page)
+            page = _click_menu(page, "Official Records Search")
+            assert_session(page)
+        page = _click_menu(page, "Document Type Search")
+        # ready = the field we actually use. (NOT the doc-type autocomplete —
+        # that widget doesn't exist for fresh anonymous sessions, and this
+        # scraper searches unfiltered by date anyway.)
+        page.wait_for_selector("#field_RecordingDateID_DOT_StartDate", timeout=60000)
+    except PWTimeout:
+        log(f"  ✗ menu navigation failed at {page.url}")
+        log(f"    visible clickables there: {_visible_clickables(page)[:40]}")
+        try:
+            log("    page text: " + repr(page.evaluate(
+                "() => document.body.innerText.replace(/\\s+/g,' ').slice(0,500)")))
+        except Exception:
+            pass
+        raise
     assert_session(page)
+    return page
 
 
 # The doc-type autocomplete combo only commits through fragile real-keystroke
@@ -193,7 +292,7 @@ def _ctx(page) -> str:
 def search_and_collect(page, begin: str, end: str) -> list[dict]:
     """Unfiltered date-range search, then paginate + structurally parse all rows.
     Returns every record (all doc types) in the window. Raises SessionExpired."""
-    enter_doc_type_search(page)
+    page = enter_doc_type_search(page)
     page.fill("#field_RecordingDateID_DOT_StartDate", begin)
     page.fill("#field_RecordingDateID_DOT_EndDate", end)
     page.click("#searchButton")
@@ -265,6 +364,28 @@ def party_check(label: str, records: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+def load_store() -> dict[str, dict]:
+    """Cumulative store keyed by doc_number (same model as the Maricopa
+    scraper): a routine --days 3 run merges into the backfill instead of
+    truncating it."""
+    docs: dict[str, dict] = {}
+    if OUT_PATH.exists():
+        with OUT_PATH.open() as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                    docs[rec["doc_number"]] = rec
+                except Exception:
+                    continue
+    return docs
+
+
+def flush_store(store: dict[str, dict]) -> None:
+    with OUT_PATH.open("w") as f:
+        for rec in sorted(store.values(), key=lambda r: r.get("recorded_date") or "", reverse=True):
+            f.write(json.dumps(rec) + "\n")
+
+
 def _date_chunks(begin: date, end: date, size: int):
     """Yield (start,end) MM/DD/YYYY slices of <= size days across [begin,end]."""
     cur = begin
@@ -285,9 +406,9 @@ def run(labels: list[str], days: int) -> None:
     # these labels, so we never touch the fragile doc-type combo.
     approved = {lbl: DOC_TYPES[lbl] for lbl in labels}
 
-    mode = "a" if state["completed"] and OUT_PATH.exists() else "w"
-    out_f = OUT_PATH.open(mode)
-    written = 0
+    store = load_store()
+    log(f"cumulative store: {len(store):,} existing docs")
+    new_count = 0
     per_type_samples: dict[str, list[dict]] = {}
 
     with sync_playwright() as pw:
@@ -297,14 +418,27 @@ def run(labels: list[str], days: int) -> None:
 
         print("\n" + "=" * 68)
         print("  PIMA RECORDER — ONE HUMAN ACTION REQUIRED")
-        print("  In the browser window: accept the disclaimer + solve the")
-        print("  reCAPTCHA, then come back here and press Enter.")
+        print("  In the 'Chrome for Testing' window that just opened: accept the")
+        print("  disclaimer + solve the reCAPTCHA. The script detects it and")
+        print("  continues by itself — nothing to press here.")
         print("=" * 68)
-        input("  [Enter] once you've accepted the disclaimer... ")
-        try:
-            enter_doc_type_search(page)
-        except SessionExpired:
-            sys.exit("SESSION not accepted — still on the disclaimer. Re-run and accept it.")
+        wait_for_acceptance(page)
+        # The menu only renders for a session whose disclaimer is truly accepted
+        # (menus are AJAX; an unaccepted session gets bare site chrome). If it
+        # still doesn't render, bounce THIS window back to the disclaimer and
+        # let the human retry — one more captcha, not a whole relaunch.
+        for attempt in range(3):
+            try:
+                page = enter_doc_type_search(page)
+                break
+            except (SessionExpired, PWTimeout):
+                if attempt == 2:
+                    browser.close()
+                    sys.exit("PORTAL_TIMEOUT — search menu never rendered after 3 accepts. "
+                             "Check the clickables dump above; the portal may have changed.")
+                print("\n  Menu didn't render — reloading the disclaimer; accept it again.")
+                page.goto(PORTAL, wait_until="domcontentloaded")
+                wait_for_acceptance(page)
 
         chunks = list(_date_chunks(begin, end, CHUNK_DAYS))
         log(f"session live. window {begin}..{end} ({days}d) in {len(chunks)} "
@@ -323,27 +457,37 @@ def run(labels: list[str], days: int) -> None:
                     rec = build_record(r, meta, r["type"])
                     if not rec:
                         continue
-                    out_f.write(json.dumps(rec) + "\n")
+                    if rec["doc_number"] not in store:
+                        new_count += 1
+                    store[rec["doc_number"]] = rec
                     kept += 1
                     per_type_samples.setdefault(rec["doc_type"], []).append(rec)
-                out_f.flush()
-                written += kept
-                log(f"▶ chunk {a}..{b}: {len(raw)} docs in window, {kept} approved kept")
+                flush_store(store)
+                log(f"▶ chunk {a}..{b}: {len(raw)} docs in window, {kept} approved kept "
+                    f"({new_count} new this run)")
                 state["completed"].append(key)
                 save_state(state)
 
         except SessionExpired:
-            out_f.close()
             save_state(state)
             print("\n" + "!" * 68)
             print("  SESSION_EXPIRED — the portal bounced back to the disclaimer.")
-            print(f"  Progress saved ({written} records, {len(state['completed'])}/{len(chunks)} chunks).")
+            print(f"  Progress saved ({new_count} new records, {len(state['completed'])}/{len(chunks)} chunks).")
             print("  Re-run the same command, re-accept the disclaimer, and it resumes.")
             print("!" * 68)
             browser.close()
             sys.exit(2)
+        except PWTimeout:
+            save_state(state)
+            print("\n" + "!" * 68)
+            print("  PORTAL_TIMEOUT — a page or search never rendered (slow portal or a")
+            print(f"  changed menu; clickables dump above). Progress saved "
+                  f"({new_count} new records, {len(state['completed'])}/{len(chunks)} chunks).")
+            print("  Re-run the same command to resume from the last completed chunk.")
+            print("!" * 68)
+            browser.close()
+            sys.exit(3)
 
-        out_f.close()
         browser.close()
 
     # per-type party check (flag the restitution/medical trap signature)
@@ -353,9 +497,9 @@ def run(labels: list[str], days: int) -> None:
     (DATA_DIR / "_pima_recorder_last_run.json").write_text(json.dumps({
         "last_run": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "run_date": run_date, "window_days": days,
-        "types": sorted(per_type_samples), "records": written,
+        "types": sorted(per_type_samples), "records": len(store), "new": new_count,
     }, indent=1))
-    log(f"✓ done. {written} records → {OUT_PATH.name}. "
+    log(f"✓ done. {new_count} new records this run, store now {len(store):,} → {OUT_PATH.name}. "
         f"{len(state['completed'])}/{len(chunks)} chunks complete.")
 
 
