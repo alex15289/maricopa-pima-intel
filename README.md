@@ -178,14 +178,27 @@ The Pima recorder portal (`pimacountyaz-web.tylerhost.net`, Tyler EagleWeb) gate
 
 #### Runbook (the daily routine)
 
+**One-time setup** (Mac): open Terminal, `cd` into this project folder, and run
+
 ```bash
+bash setup.sh
+```
+
+It checks for Python 3.12+ and git (telling you plainly what to install if either is missing), creates the project's Python environment, installs the packages, downloads the scraper's browser, and verifies the browser actually launches. Safe to re-run any time. *(Windows: not supported yet — a parallel `setup.ps1`/`run.cmd` can be added later.)*
+
+**Daily:** double-click **`run.command`** in the project folder.
+
+1. A Terminal window opens with live progress, and a separate browser window ("Google Chrome for Testing") opens on the Pima County disclaimer page.
+2. **In that browser window** — not your everyday Chrome — accept the disclaimer and solve the reCAPTCHA. That's the only thing you do. The script watches the window and continues by itself the moment the accept lands; there is nothing to type. (If you accidentally accept in the wrong browser, nothing breaks — the script keeps waiting and prints a reminder every 30 seconds until you accept in its window.)
+3. **Wait for `✓ done`.** A routine 3-day run takes **under a minute total** — the scrape itself is ~20 seconds once you've accepted; a 30-day backfill is ~2 minutes. The log prints one line per date chunk plus a grantor→grantee sample for each doc type, and the Terminal window stays open at the end so you can read the result.
+
+**Manual fallback** (technical users, or a custom window):
+
+```bash
+source .venv/bin/activate
 python scrapers/pima_recorder.py            # last 3 days, default-on types
 python scrapers/pima_recorder.py --days 30  # wider backfill window
 ```
-
-1. **Run the command.** A separate browser window opens ("Google Chrome for Testing") showing the Pima County disclaimer page.
-2. **In that window** — not your everyday Chrome — accept the disclaimer and solve the reCAPTCHA. That's the only thing you do. The script watches the window and continues by itself the moment the accept lands; there is nothing to press in the terminal. (If you accidentally accept in the wrong browser, nothing breaks — the script keeps waiting and prints a reminder every 30 seconds until you accept in its window.)
-3. **Wait for `✓ done`.** A routine 3-day run takes **under a minute total** — the scrape itself is ~20 seconds once you've accepted; a 30-day backfill is ~2 minutes. The log prints one line per date chunk plus a grantor→grantee sample for each doc type.
 
 New records **merge into** `data/pima_recorder_docs_portal.jsonl` (cumulative, deduped by document number — a short run never erases older data). Each run stamps `data/_pima_recorder_last_run.json`. Small "new" counts are normal: the portal certifies records a few business days behind today and updates nightly Mon–Fri, so a daily 3-day window mostly re-confirms what you already have.
 

@@ -43,3 +43,4 @@ data/_pima_recorder_state.json
 # Attended Pima recorder scrape — committed so the live dashboard shows it
 !data/pima_recorder_docs_portal.jsonl
 !data/_pima_recorder_last_run.json
+.setup.log
