@@ -84,6 +84,15 @@ DOC_TYPES = {
     "OS": {"label": "Death Certificate (Out of State)", "category": "Estate"},
     "PJ": {"label": "Probate Judgment",        "category": "Estate"},
     "PD": {"label": "Probate Deed",            "category": "Estate"},
+    # Estate planning — pre-death counterpart to the Estate types. A beneficiary
+    # (transfer-on-death) deed signals an aging owner arranging succession; the
+    # property will pass to heirs. Added from the Part A recon (Aug 2026): >500/mo,
+    # all-family parties. Does NOT vest the parcel (title stays with the owner
+    # until death), so it resolves by name, not the deed# join.
+    "BB": {"label": "Beneficiary Deed",        "category": "Estate Planning"},
+    # HOA / assessment delinquency. Real signal but routine (Sun City rec-center
+    # + HOA assessment liens), so it ships OFF by default in the dashboard.
+    "LN": {"label": "HOA/Assessment Lien",     "category": "Tax & Liens"},
     # Transfers worth watching
     "QD": {"label": "Quit Claim Deed",         "category": "Transfers"},
 }

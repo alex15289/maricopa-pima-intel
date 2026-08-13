@@ -110,7 +110,17 @@ python pipeline/export_csv.py --county Maricopa --doc-type "Notice of Trustee Sa
 ## Configuration
 
 ### Document types
-`scrapers/maricopa_recorder_api.py` has a `DOC_TYPES` registry (query code → label + category). These are the **2-letter query codes** from the county's own search dropdown, not the display codes returned in results — verify a code's live behavior before adding one (e.g. `SL` is State Tax Lien; `STL` is Substitution of Trustee). The 19 approved types span Foreclosure, Legal, Tax & Liens, Estate, and Transfers. Pima deed transfers are a single `Deed Transfer` type from the GIS layer; the treasurer feed adds `Tax Delinquent`.
+`scrapers/maricopa_recorder_api.py` has a `DOC_TYPES` registry (query code → label + category). These are the **2-letter query codes** from the county's own search dropdown, not the display codes returned in results — verify a code's live behavior before adding one (e.g. `SL` is State Tax Lien; `STL` is Substitution of Trustee). The current types span Foreclosure, Legal, Tax & Liens, Estate, Estate Planning, and Transfers. Pima deed transfers are a single `Deed Transfer` type from the GIS layer; the treasurer feed adds `Tax Delinquent`.
+
+### Doc-type recon findings — DO NOT re-add codes off their label (Aug 2026)
+A full recon of all 267 Maricopa codes (30-day window, volume + display-code + sampled parties + lifecycle) settled which codes belong. **Labels lie; always sample the parties before adding.** Decisions:
+
+- **`BB` Beneficiary Deed — ADDED** (category *Estate Planning*, on by default). Transfer-on-death deeds, >500/mo, all-family parties. The *pre-death* counterpart to Death Certificate / Probate (aging owner arranging succession). Note it does **not** vest the parcel, so it resolves by name, not the deed# join.
+- **`LN` HOA/Assessment Lien — ADDED** (category *Tax & Liens*, **off by default**). Real HOA/assessment-delinquency signal but routine (Sun City rec-center + HOA management liens), so it's a toggle like Judgment / AHCCCS / Mechanics.
+- **`NC` "Restitution/Racketeering Lien" — SKIP.** Label looks like a high-value lien, but every record is **STATE OF ARIZONA v. a criminal defendant** — no property nexus. A label-accurate, party-misleading trap; only party-sampling catches it.
+- **`EL` "DES Lien" — SKIP.** Accurate label, but it's **unemployment-insurance liens against employer businesses** (LLCs/Inc), not homeowners.
+- **170 of 267 codes are dead** (0 volume over 30 days) — including `HD` Sheriff's Deed, `TR` Treasurer's Deed, `XD` Tax Deed, `WA` Writ of Attachment, `EX` Execution, `SF`/`CS` certificates of sale. **This is expected: Arizona is a trustee-sale (non-judicial) foreclosure state.** Foreclosures run through Notice of Trustee Sale → Trustee's Deed (both already captured), so the judicial/sheriff/tax-sale outcome codes other states rely on simply aren't recorded here at volume. Don't add them expecting foreclosure outcomes — use `NS` (with the CQ/TD lifecycle) instead.
+- The remaining ~63 non-dead codes are administrative noise (releases, reconveyances, satisfactions, assignments, financing statements, plats/surveys/easements) — resolutions and paperwork, not distress.
 
 ### Foreclosure lifecycle
 `pipeline/build_docleads.py` treats `NTS Cancelled` (CQ) and `Trustee's Deed` (TD) as closers: they mark their matching `Notice of Trustee Sale` cancelled/completed rather than appearing as standalone leads. Matching is by resolved APN or shared party name, nearest prior NS within `KILL_LOOKBACK_DAYS`.

@@ -10,7 +10,7 @@
     --pima:#f97316; --maricopa:#38bdf8; --danger:#ef4444; --ok:#10b981; --warn:#f59e0b;
     /* category colors */
     --cat-Foreclosure:#ef4444; --cat-Tax:#f59e0b; --cat-Estate:#a855f7;
-    --cat-Legal:#3b82f6; --cat-Transfers:#10b981; --cat-Other:#64748b;
+    --cat-EstatePlanning:#c084fc; --cat-Legal:#3b82f6; --cat-Transfers:#10b981; --cat-Other:#64748b;
     --shadow-md:0 4px 12px rgba(0,0,0,.5),0 0 0 1px rgba(59,130,246,.08);
     --glow-blue:0 0 12px rgba(59,130,246,.25);
   }
@@ -179,15 +179,18 @@
 <script>
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const CAT_ORDER = ["Foreclosure","Tax & Liens","Estate","Legal","Transfers","Other"];
+// "Estate Planning" (beneficiary/TOD deeds) sits next to "Estate" — it's the
+// pre-death counterpart to Death Certificate / Probate, not a Transfer.
+const CAT_ORDER = ["Foreclosure","Tax & Liens","Estate Planning","Estate","Legal","Transfers","Other"];
 // High-volume, low-resolution people-lien / civil types: shipped OFF by default,
 // available to enable per campaign (they're mostly unresolved and crowd the view).
-const DEFAULT_OFF = new Set(["Judgment","AHCCCS Lien","Mechanics Lien"]);
+const DEFAULT_OFF = new Set(["Judgment","AHCCCS Lien","Mechanics Lien","HOA/Assessment Lien"]);
 // Deed-type docs resolve by exact recording-number join against the assessor's
 // parcel record, which lags recording ~4 weeks — so a recent unresolved deed is
 // expected, not broken. Used to show a clarifying note in the detail panel.
 const DEED_TYPES = new Set(["Quit Claim Deed","Trustee's Deed","Deed Transfer","Probate Deed"]);
-const catVar = c => c==="Tax & Liens" ? "--cat-Tax" : (["Foreclosure","Estate","Legal","Transfers"].includes(c)?`--cat-${c}`:"--cat-Other");
+const CAT_VAR = {"Foreclosure":"--cat-Foreclosure","Tax & Liens":"--cat-Tax","Estate Planning":"--cat-EstatePlanning","Estate":"--cat-Estate","Legal":"--cat-Legal","Transfers":"--cat-Transfers"};
+const catVar = c => CAT_VAR[c] || "--cat-Other";
 const fmtN = n => (n||0).toLocaleString();
 const fmtM = v => v==null||v===""?"—":"$"+Math.round(+v).toLocaleString();
 
