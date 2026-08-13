@@ -187,6 +187,10 @@ FIELD_MAP = {
     "last_sale_price": ["SALE_PRICE", "DEED_PRICE", "LAST_SALE_AMT"],
     "latitude":        ["LATITUDE", "LAT"],
     "longitude":       ["LONGITUDE", "LON", "LONG"],
+    # SEQ_NUM_D = recorder sequence number of the deed that vests this parcel —
+    # Pima's equivalent of Maricopa's DEED_NUMBER. Lets recorder DEED documents
+    # resolve to a parcel by exact identifier (seq# -> APN). 90% populated.
+    "deed_number":     ["SEQ_NUM_D"],
 }
 
 UNIFIED_FIELDS = list(FIELD_MAP.keys()) + ["county", "source_objectid",

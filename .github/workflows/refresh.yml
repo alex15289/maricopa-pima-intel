@@ -62,10 +62,10 @@ jobs:
           path: |
             data/maricopa_parcels.jsonl
             data/pima_parcels.jsonl
-          # v3: adds DEED_NUMBER to the Maricopa parcel schema (deed#->APN direct
-          #     join). Bumping the key forces a one-time re-pull with the new
-          #     field — no manual step; subsequent weeks restore from cache.
-          key: parcels-v3-${{ steps.week.outputs.week }}
+          # v3: DEED_NUMBER on Maricopa parcels (deed#->APN join).
+          # v4: SEQ_NUM_D->deed_number on Pima parcels (same join for Pima recorder
+          #     deeds). Each bump forces a one-time re-pull with the new field.
+          key: parcels-v4-${{ steps.week.outputs.week }}
 
       - name: Pull Maricopa parcel master (ArcGIS)
         if: steps.cache-parcels.outputs.cache-hit != 'true'

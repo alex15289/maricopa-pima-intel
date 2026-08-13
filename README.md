@@ -173,7 +173,25 @@ All data is pulled from public, published government endpoints. No authenticatio
 | `publicapi.recorder.maricopa.gov/documents/search` | Maricopa recorded documents — open REST API, coverage back to 1871 |
 | Pima Treasurer monthly delinquency file | Dropped into `data/` when subscribed; `enrich_treasurer.py` translates it |
 
-Note: the Pima recorder portal (`pimacountyaz-web.tylerhost.net`) is a session-gated Tyler EagleWeb app (disclaimer + reCAPTCHA per session, stateful search) — not automatable unattended, so Pima document leads come from the GIS deed layer instead.
+### Pima recorder — attended scraper (`scrapers/pima_recorder.py`)
+The Pima recorder portal (`pimacountyaz-web.tylerhost.net`, Tyler EagleWeb) gates every search behind a once-per-session disclaimer + reCAPTCHA, and the doc-type filter only commits through a real-keystroke autocomplete — so it can't run headless in the 4am automation. Instead it's an **attended, on-demand local tool**: run it when you want fresh Pima recorder distress docs (foreclosure, lis pendens, probate, liens the GIS deed feed can't provide).
+
+```bash
+python scrapers/pima_recorder.py            # last 3 days, default-on types
+python scrapers/pima_recorder.py --days 30  # wider backfill window
+```
+
+It opens a real browser; you **accept the disclaimer + solve the reCAPTCHA once**, press Enter, and the script drives every search itself. It fails loud on `SESSION_EXPIRED` (302 back to the disclaimer), checkpoints per doc type so a drop resumes, and party-checks each type (flagging label-that-lies traps). Output: `data/pima_recorder_docs_portal.jsonl`. **It is deliberately NOT in the GitHub Actions automation.** Each run stamps `data/_pima_recorder_last_run.json`; the dashboard header shows how many days stale that data is (green <3d, amber 3–4d, red ⚠ ≥5d, "never run" if absent) so it's never silently old.
+
+**Pima recorder doc types** (Part B recon, party-verified): on by default — Notice of Trustee Sale, NTS Cancelled (closer), Trustee's Deed (closer), Lis Pendens, Death Certificate, Affidavit Terminating JT/CP (a co-owner death), Deed of Distribution, Affidavit of Succession, Federal/State/City Lien, Beneficiary Deed, Beneficiary Deed Revocation, Disclaimer Deed. Off by default — Judgment, AHCCCS Lien, Mechanics Lien.
+
+**Skipped — party-verified traps (do NOT re-add off the label):**
+- **RESTITUTION LIEN** (301/mo) — grantor is an individual but grantee is always **ARIZONA STATE**: criminal restitution, no property nexus. (The Maricopa `NC` equivalent.)
+- **NOTICE LIEN** (267/mo) and **HOSPITAL LIEN** (125/mo) — grantee is always a **medical center / hospital**: injury-settlement liens, not realty.
+- Mining / water-right / land-patent codes exist but are rare Arizona-frontier instruments, not distress. No tribal-land codes (tribal trust land is federal/BIA, not county-recorded).
+
+### Resolving Pima recorder docs
+The portal exposes **no parcel/APN/legal reference per document** — only sequence number, date, grantor, grantee (property ID lives only in the purchasable image). So Pima recorder docs resolve two ways: **vesting deeds** (Trustee's Deed, Deed of Distribution) join by sequence# ↔ the parcel layer's `SEQ_NUM_D` (Pima's DEED_NUMBER equivalent, 90% populated, ~4-week assessor lag); **everything else** (Notice of Trustee Sale, Lis Pendens, Death Certificate, liens) resolves by name matching against the Pima parcel owner index — **expect ~40–50%**, the same ceiling as Maricopa recorder docs, because there's no parcel-ID shortcut. (Pima GIS *deed transfers* stay 100% resolved — that feed carries the APN directly.)
 - City of Phoenix / Tucson / Mesa code violation portals
 - Arizona Judicial Branch probate case search
 

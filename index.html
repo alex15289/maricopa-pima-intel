@@ -113,6 +113,7 @@
       <div class="kpi"><div class="v" id="k-resolved">—</div><div class="l">Resolved</div></div>
       <div class="kpi"><div class="v" id="k-fresh">—</div><div class="l">New (7d)</div></div>
       <div class="kpi"><div class="v" id="k-range" style="font-size:12px">—</div><div class="l">Date range</div></div>
+      <div class="kpi" id="k-pimarec-wrap" style="display:none"><div class="v" id="k-pimarec" style="font-size:12px">—</div><div class="l">Pima recorder</div></div>
     </div>
   </header>
 
@@ -231,6 +232,20 @@ function renderKPIs() {
   $("#k-fresh").textContent = fmtN(fresh);
   const dr = m.date_range||{};
   $("#k-range").textContent = dr.min ? `${dr.min} → ${dr.max}` : "—";
+  // Pima recorder is a manual attended pull — show its age honestly, never silently stale
+  const pr = (m.source_freshness||{}).pima_recorder_portal;
+  if (pr) {
+    const wrap=$("#k-pimarec-wrap"), el=$("#k-pimarec");
+    wrap.style.display="";
+    if (pr.age_days==null) { el.textContent="never run"; el.style.color="var(--text-muted)"; }
+    else {
+      const stale = pr.age_days>=5;
+      el.textContent = pr.age_days===0 ? "today" : `${pr.age_days}d ago`;
+      el.style.color = stale ? "var(--danger)" : (pr.age_days>=3 ? "var(--warn)" : "var(--ok)");
+      if (stale) el.textContent += " ⚠";
+      el.title = `Pima recorder last pulled ${pr.last_run||"—"} (${pr.records||0} records). Run scrapers/pima_recorder.py to refresh.`;
+    }
+  }
   $("#tc-all").textContent = fmtN(state.leads.length);
   $("#tc-mar").textContent = fmtN(byC.Maricopa||0);
   $("#tc-pima").textContent = fmtN(byC.Pima||0);

@@ -173,25 +173,29 @@ def apply_foreclosure_lifecycle(docs: list[dict], today: date) -> tuple[list[dic
         nd = parse_date(n.get("recorded_date"))
         n["status_provisional"] = (not history_confident) or (nd is not None and nd < coverage_start)
 
-    # index NS by APN and by each person-name
-    by_apn: dict[str, list[dict]] = defaultdict(list)
-    by_name: dict[str, list[dict]] = defaultdict(list)
+    # index NS by (county, APN) and (county, person-name) — matching is scoped to
+    # a single county so a Pima closer never claims a Maricopa NS (APN formats
+    # and party namespaces differ between counties).
+    by_apn: dict[tuple, list[dict]] = defaultdict(list)
+    by_name: dict[tuple, list[dict]] = defaultdict(list)
     for n in ns_leads:
+        cty = n.get("county")
         if n.get("apn_norm"):
-            by_apn[n["apn_norm"]].append(n)
+            by_apn[(cty, n["apn_norm"])].append(n)
         for pn in person_names(n.get("names")):
-            by_name[pn].append(n)
+            by_name[(cty, pn)].append(n)
 
     matched_closers = 0
     for c in closers:
+        cty = c.get("county")
         cdate = parse_date(c.get("recorded_date"))
         cand: list[dict] = []
-        if c.get("apn_norm") and c["apn_norm"] in by_apn:
-            cand = by_apn[c["apn_norm"]]
+        if c.get("apn_norm") and (cty, c["apn_norm"]) in by_apn:
+            cand = by_apn[(cty, c["apn_norm"])]
         else:
             seen = set()
             for pn in person_names(c.get("names")):
-                for n in by_name.get(pn, []):
+                for n in by_name.get((cty, pn), []):
                     if id(n) not in seen:
                         seen.add(id(n))
                         cand.append(n)
@@ -233,6 +237,47 @@ def apply_foreclosure_lifecycle(docs: list[dict], today: date) -> tuple[list[dic
 
 
 # ---------------------------------------------------------------------------
+# Recorder-doc resolution (deed# exact join first, then fuzzy name match)
+# ---------------------------------------------------------------------------
+def resolve_recorder_docs(docs: list[dict], parcels: list[dict], county: str) -> dict:
+    """Resolve recorder documents (which carry party names, not APNs) to a
+    parcel. Precedence: DEED_NUMBER / SEQ_NUM_D exact join for vesting deeds
+    (authoritative, ~4-week assessor lag), then name matching. Mutates docs in
+    place (sets apn/apn_norm/resolved/resolved_by/match_tier). Works identically
+    for Maricopa (DEED_NUMBER) and Pima (SEQ_NUM_D → deed_number)."""
+    if not docs:
+        return {"total": 0, "by_deed": 0, "by_name": 0}
+    deed_index: dict[str, dict] = {}
+    for p in parcels:
+        dn = p.get("deed_number")
+        if dn:
+            deed_index[str(dn).strip()] = p
+    exact_idx, by_last_idx = build_name_index(parcels)
+    repeat = detect_repeat_signers(docs)
+    log.info(f"{county}: deed# index {len(deed_index):,} parcels; "
+             f"{len(repeat):,} repeat-signer names filtered")
+    by_deed = by_name = 0
+    for d in docs:
+        parcel = deed_index.get(str(d.get("doc_number") or "").strip())
+        if parcel:
+            d["resolved_by"], d["match_tier"] = "deed_number", None
+            by_deed += 1
+        else:
+            parcel, tier = resolve_names(d.get("names", []), exact_idx, by_last_idx, repeat)
+            if parcel:
+                d["resolved_by"], d["match_tier"] = "name", tier
+                by_name += 1
+        if parcel:
+            d["apn"], d["apn_norm"], d["resolved"] = parcel.get("apn"), parcel.get("apn_norm"), True
+        else:
+            d["resolved"] = False
+    res = by_deed + by_name
+    log.info(f"{county}: resolved {res:,}/{len(docs):,} ({100*res/max(len(docs),1):.1f}%) — "
+             f"{by_deed:,} by deed# (exact), {by_name:,} by name")
+    return {"total": len(docs), "resolved": res, "by_deed": by_deed, "by_name": by_name}
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def build(limit_dashboard: int = DASHBOARD_CAP) -> dict:
@@ -252,52 +297,20 @@ def build(limit_dashboard: int = DASHBOARD_CAP) -> dict:
 
     # ---- document stores -----------------------------------------------------
     mar_docs = load_jsonl(DATA_DIR / "maricopa_recorder_docs.jsonl")
-    pima_docs = load_jsonl(DATA_DIR / "pima_recorder_docs.jsonl")
+    pima_deed_docs = load_jsonl(DATA_DIR / "pima_recorder_docs.jsonl")          # GIS deed transfers (pre-resolved)
+    pima_portal_docs = load_jsonl(DATA_DIR / "pima_recorder_docs_portal.jsonl") # attended recorder distress docs
     tax_docs = load_jsonl(DATA_DIR / "pima_tax_docs.jsonl")
 
-    # ---- resolve Maricopa docs ----------------------------------------------
-    # Precedence: DEED_NUMBER exact identifier join first (a recorded deed whose
-    # recording number vests a parcel is an authoritative APN link), then fall
-    # back to fuzzy name matching. The assessor lags ~4 weeks writing a new deed
-    # into DEED_NUMBER, so freshly-recorded deeds resolve retroactively as that
-    # lag clears — an unresolved recent deed is expected, not broken.
-    if mar_docs:
-        mar_parcels = [p for p in maricopa_parcels if p.get("county") == "Maricopa"]
-        deed_index: dict[str, dict] = {}
-        for p in mar_parcels:
-            dn = p.get("deed_number")
-            if dn:
-                deed_index[str(dn).strip()] = p
-        log.info(f"deed-number index: {len(deed_index):,} parcels carry a vesting deed number")
+    # ---- resolve recorder docs (name-only sources) --------------------------
+    # Maricopa recorder + Pima recorder-portal docs carry party names, not APNs.
+    # Both resolve deed#-first (Maricopa DEED_NUMBER / Pima SEQ_NUM_D) then by
+    # name. Pima GIS deeds + tax docs already arrive APN-resolved, so skip them.
+    mar_parcels = [p for p in maricopa_parcels if p.get("county") == "Maricopa"]
+    pima_parcels_only = [p for p in pima_parcels if p.get("county") == "Pima"]
+    resolve_recorder_docs(mar_docs, mar_parcels, "Maricopa")
+    resolve_recorder_docs(pima_portal_docs, pima_parcels_only, "Pima recorder")
 
-        exact_idx, by_last_idx = build_name_index(mar_parcels)
-        repeat = detect_repeat_signers(mar_docs)
-        log.info(f"{len(repeat):,} repeat-signer (trustee/attorney) names filtered")
-        by_deed = by_name = 0
-        for d in mar_docs:
-            parcel = deed_index.get(str(d.get("doc_number") or "").strip())
-            if parcel:
-                d["resolved_by"] = "deed_number"
-                d["match_tier"] = None
-                by_deed += 1
-            else:
-                parcel, tier = resolve_names(d.get("names", []), exact_idx, by_last_idx, repeat)
-                if parcel:
-                    d["resolved_by"] = "name"
-                    d["match_tier"] = tier
-                    by_name += 1
-            if parcel:
-                d["apn"] = parcel.get("apn")
-                d["apn_norm"] = parcel.get("apn_norm")
-                d["resolved"] = True
-            else:
-                d["resolved"] = False
-        res_count = by_deed + by_name
-        log.info(f"Maricopa: resolved {res_count:,}/{len(mar_docs):,} "
-                 f"({100*res_count/max(len(mar_docs),1):.1f}%) — "
-                 f"{by_deed:,} by deed# (exact), {by_name:,} by name")
-
-    all_docs = mar_docs + pima_docs + tax_docs
+    all_docs = mar_docs + pima_deed_docs + pima_portal_docs + tax_docs
 
     # ---- foreclosure lifecycle (CQ/TD close NS) ------------------------------
     leads, life_stats = apply_foreclosure_lifecycle(all_docs, today)
@@ -339,6 +352,24 @@ def build(limit_dashboard: int = DASHBOARD_CAP) -> dict:
     resolved = sum(1 for l in leads if l.get("resolved"))
     dates = [l["recorded_date"] for l in leads if l.get("recorded_date")]
 
+    # ---- per-source freshness (the Pima recorder portal is a manual, attended
+    # run — surface how stale it is so the dashboard never reads silently old) --
+    sources = {}
+    lr_path = DATA_DIR / "_pima_recorder_last_run.json"
+    if lr_path.exists():
+        try:
+            lr = json.loads(lr_path.read_text())
+            last = datetime.fromisoformat(lr["last_run"].replace("Z", "+00:00"))
+            sources["pima_recorder_portal"] = {
+                "last_run": lr["last_run"],
+                "age_days": (now - last).days,
+                "records": lr.get("records"),
+            }
+        except Exception as e:
+            log.warning(f"couldn't read Pima recorder last-run stamp: {e}")
+    elif any(d.get("source") == "pima_recorder_portal" for d in all_docs):
+        sources["pima_recorder_portal"] = {"last_run": None, "age_days": None}
+
     out = {
         "generated_at": now_iso,
         "doctrine": "UCIF v5.5.0 — lead = recorded document; type = doc type; no scores/tiers",
@@ -351,6 +382,7 @@ def build(limit_dashboard: int = DASHBOARD_CAP) -> dict:
         "doc_type_counts": doc_type_counts,
         "doc_type_category": cat_of,
         "foreclosure_lifecycle": life_stats,
+        "source_freshness": sources,
         "leads": leads[:limit_dashboard],
     }
     out_path = DATA_DIR / "leads.json"

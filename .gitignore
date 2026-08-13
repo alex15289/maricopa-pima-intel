@@ -36,3 +36,7 @@ data/_debug/
 test-results/
 playwright-report/
 .playwright-pima/
+
+# Pima recorder attended-run local artifacts
+data/_pima_recorder_state.json
+data/_pima_recorder_last_run.json
