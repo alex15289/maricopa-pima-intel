@@ -174,14 +174,30 @@ All data is pulled from public, published government endpoints. No authenticatio
 | Pima Treasurer monthly delinquency file | Dropped into `data/` when subscribed; `enrich_treasurer.py` translates it |
 
 ### Pima recorder — attended scraper (`scrapers/pima_recorder.py`)
-The Pima recorder portal (`pimacountyaz-web.tylerhost.net`, Tyler EagleWeb) gates every search behind a once-per-session disclaimer + reCAPTCHA, and the doc-type filter only commits through a real-keystroke autocomplete — so it can't run headless in the 4am automation. Instead it's an **attended, on-demand local tool**: run it when you want fresh Pima recorder distress docs (foreclosure, lis pendens, probate, liens the GIS deed feed can't provide).
+The Pima recorder portal (`pimacountyaz-web.tylerhost.net`, Tyler EagleWeb) gates every search behind a once-per-session disclaimer + reCAPTCHA — so it can't run headless in the 4am automation. Instead it's an **attended, on-demand local tool**: run it when you want fresh Pima recorder distress docs (foreclosure, lis pendens, probate, liens the GIS deed feed can't provide).
+
+#### Runbook (the daily routine)
 
 ```bash
 python scrapers/pima_recorder.py            # last 3 days, default-on types
 python scrapers/pima_recorder.py --days 30  # wider backfill window
 ```
 
-It opens a real browser; you **accept the disclaimer + solve the reCAPTCHA once**, press Enter, and the script drives every search itself. It fails loud on `SESSION_EXPIRED` (302 back to the disclaimer), checkpoints per doc type so a drop resumes, and party-checks each type (flagging label-that-lies traps). Output: `data/pima_recorder_docs_portal.jsonl`. **It is deliberately NOT in the GitHub Actions automation.** Each run stamps `data/_pima_recorder_last_run.json`; the dashboard header shows how many days stale that data is (green <3d, amber 3–4d, red ⚠ ≥5d, "never run" if absent) so it's never silently old.
+1. **Run the command.** A separate browser window opens ("Google Chrome for Testing") showing the Pima County disclaimer page.
+2. **In that window** — not your everyday Chrome — accept the disclaimer and solve the reCAPTCHA. That's the only thing you do. The script watches the window and continues by itself the moment the accept lands; there is nothing to press in the terminal. (If you accidentally accept in the wrong browser, nothing breaks — the script keeps waiting and prints a reminder every 30 seconds until you accept in its window.)
+3. **Wait for `✓ done`.** A routine 3-day run takes **under a minute total** — the scrape itself is ~20 seconds once you've accepted; a 30-day backfill is ~2 minutes. The log prints one line per date chunk plus a grantor→grantee sample for each doc type.
+
+New records **merge into** `data/pima_recorder_docs_portal.jsonl` (cumulative, deduped by document number — a short run never erases older data). Each run stamps `data/_pima_recorder_last_run.json`. Small "new" counts are normal: the portal certifies records a few business days behind today and updates nightly Mon–Fri, so a daily 3-day window mostly re-confirms what you already have.
+
+**The freshness pill** in the dashboard header shows how old this data is: **green** = pulled within 3 days, **amber** = 3–4 days, **red ⚠** = 5+ days, "never run" if absent. It reads the last-run stamp, so it updates after the next leads build (the 4am job, or a manual `python -m pipeline.build_docleads`). When the pill is red, run the command above — that's all it's asking for.
+
+**If it fails, it fails loud — just re-run.** Progress is checkpointed per date chunk, so a re-run resumes where it stopped instead of starting over; you'll re-accept the disclaimer and it continues. The two loud failures:
+- **`SESSION_EXPIRED`** — plain language: *the portal logged you out mid-run* (it bounced back to the disclaimer page). Nothing is wrong with your machine or the data; sessions just expire. Re-run, accept again, it resumes.
+- **`PORTAL_TIMEOUT`** — a page the script expected never appeared (slow portal, or Tyler changed something). The log dumps what the page actually showed. Re-run once; if it fails the same way twice, see the known fragility below.
+
+**Known fragility — hardcoded portal URL.** The script enters the search UI directly at `/web/action/ACTIONGROUP55S1` (the home page's menu tiles are rendered by a `/web/homeActions` XHR that never renders for an automated browser session, even after a genuine disclaimer accept — so the tiles can't be clicked and the direct URL is the reliable way in). If Tyler renumbers that action group in a portal upgrade, the symptom is: **disclaimer accepts fine, then `PORTAL_TIMEOUT` on every attempt**, with the log line `direct action-group route bounced` and/or a page-text dump showing the home page ("You have been redirected to the home page because your options have changed"). Fix: in a normal browser, accept the disclaimer, click *Official Records Search - Web*, and copy the new `/web/action/ACTIONGROUP…` URL from the address bar into `ACTION_GROUP_URL` in `scrapers/pima_recorder.py`.
+
+**It is deliberately NOT in the GitHub Actions automation** — a headless runner can't solve the reCAPTCHA.
 
 **Pima recorder doc types** (Part B recon, party-verified): on by default — Notice of Trustee Sale, NTS Cancelled (closer), Trustee's Deed (closer), Lis Pendens, Death Certificate, Affidavit Terminating JT/CP (a co-owner death), Deed of Distribution, Affidavit of Succession, Federal/State/City Lien, Beneficiary Deed, Beneficiary Deed Revocation, Disclaimer Deed. Off by default — Judgment, AHCCCS Lien, Mechanics Lien.
 
@@ -202,6 +218,8 @@ The portal exposes **no parcel/APN/legal reference per document** — only seque
 | Symptom | Fix |
 |---|---|
 | `no data yet` on dashboard | Run `python -m pipeline.build_docleads` — it creates `data/leads.json`. |
+| Pima recorder scraper: `SESSION_EXPIRED` | The portal logged you out mid-run (sessions expire). Re-run the same command, accept the disclaimer again — it resumes from the last completed chunk. |
+| Pima recorder scraper: `PORTAL_TIMEOUT` every attempt, log says `direct action-group route bounced` | Tyler renumbered the search entry URL. See "Known fragility" in the Pima recorder section — update `ACTION_GROUP_URL` in `scrapers/pima_recorder.py`. |
 | Recorder scrape returns 0 rows | County updated the portal UI. Check `data/_debug/*.png` for the failed screen and update selectors in the scraper. |
 | Pima parcel scraper can't find endpoint | Visit https://gisopendata.pima.gov, find the Parcels dataset, click "View Data Source", copy the URL (without `/query`), and pass it: `python scrapers/pima_parcels.py --url <url>`. |
 | ArcGIS paginator returns fewer records than count | Rate-limited. The built-in backoff will handle it. Rerun if it stalls. |
