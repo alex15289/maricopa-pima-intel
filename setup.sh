@@ -84,10 +84,25 @@ fi
 # --- Python packages --------------------------------------------------------
 say "Installing Python packages (about a minute)..."
 .venv/bin/python -m pip install --upgrade pip >>"$LOG" 2>&1  # best-effort
-.venv/bin/python -m pip install -r requirements.txt >>"$LOG" 2>&1 || fail \
-  "the Python packages did not install." \
+
+# Playwright 1.62's bundled Node binary requires macOS 13.5. On macOS 11/12,
+# use the last compatible browser runtime. Python 3.14 needs a newer greenlet
+# than Playwright 1.48's metadata pin, so install the runtime-compatible set
+# explicitly inside this project's private environment.
+MACOS_MAJOR=$(sw_vers -productVersion | cut -d. -f1)
+if [[ "$MACOS_MAJOR" -lt 13 ]]; then
+  .venv/bin/python -m pip install "requests>=2.31.0" "greenlet>=3.5.5" >>"$LOG" 2>&1 || fail \
+    "the Python packages did not install." \
+"Check your connection and run this script again."
+  .venv/bin/python -m pip install --no-deps "playwright==1.48.0" "pyee==12.0.0" >>"$LOG" 2>&1 || fail \
+    "the macOS 11/12 compatible Playwright packages did not install." \
+"Check your connection and run this script again."
+else
+  .venv/bin/python -m pip install -r requirements.txt >>"$LOG" 2>&1 || fail \
+    "the Python packages did not install." \
 "This is almost always an internet hiccup — check your connection and run
    this script again."
+fi
 ok "packages installed"
 
 # --- scraper browser (Chromium) ---------------------------------------------
