@@ -107,8 +107,18 @@ jobs:
         continue-on-error: true
         run: PYTHONPATH=. python pipeline/enrich_treasurer.py
 
-      - name: Build leads.json (doc-type leads, UCIF v5.5.0)
+      - name: Preserve historical dashboard before rolling-window build
+        run: cp data/leads.json /tmp/leads-baseline.json
+
+      - name: Build fresh rolling-window leads (doc-type leads, UCIF v5.5.0)
         run: PYTHONPATH=. python -m pipeline.build_docleads
+
+      - name: Merge fresh leads into protected historical dashboard
+        run: |
+          PYTHONPATH=. python pipeline/merge_leads_history.py \
+            --baseline /tmp/leads-baseline.json \
+            --fresh data/leads.json \
+            --output data/leads.json
 
       - name: Sanity check — refuse to commit a gutted dashboard
         run: |
