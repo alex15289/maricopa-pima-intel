@@ -1,22 +1,17 @@
 {
- "last_run": "2026-08-20T14:01:59Z",
- "run_date": "2026-08-20",
- "window_days": 14,
+ "last_run": "2026-08-21T22:16:41Z",
+ "run_date": "2026-08-21",
+ "window_days": 3,
  "types": [
   "Affidavit Terminating JT/CP",
-  "Affidavit of Succession",
   "Beneficiary Deed",
-  "Beneficiary Deed Revocation",
   "Death Certificate",
   "Deed of Distribution",
   "Disclaimer Deed",
-  "Federal Tax Lien",
-  "Lis Pendens",
   "NTS Cancelled",
   "Notice of Trustee Sale",
-  "State Tax Lien",
   "Trustee's Deed"
  ],
- "records": 1949,
- "new": 118
+ "records": 1972,
+ "new": 23
 }
