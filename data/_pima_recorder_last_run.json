@@ -1,17 +1,13 @@
 {
- "last_run": "2026-08-21T22:16:41Z",
- "run_date": "2026-08-21",
+ "last_run": "2026-08-24T17:56:41Z",
+ "run_date": "2026-08-24",
  "window_days": 3,
  "types": [
   "Affidavit Terminating JT/CP",
-  "Beneficiary Deed",
+  "Affidavit of Succession",
   "Death Certificate",
-  "Deed of Distribution",
-  "Disclaimer Deed",
-  "NTS Cancelled",
-  "Notice of Trustee Sale",
-  "Trustee's Deed"
+  "Notice of Trustee Sale"
  ],
- "records": 1972,
- "new": 23
+ "records": 1978,
+ "new": 6
 }
