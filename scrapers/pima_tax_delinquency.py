@@ -78,18 +78,38 @@ def _external_evidence_summary(record: dict) -> dict:
     }
 
 
+def _unique_evidence(items: Iterable[dict]) -> list[dict]:
+    """Deduplicate normalized evidence retained across daily reverification."""
+    unique: list[dict] = []
+    seen: set[str] = set()
+    for item in items:
+        marker = json.dumps(item, sort_keys=True, separators=(",", ":"), default=str)
+        if marker not in seen:
+            seen.add(marker)
+            unique.append(item)
+    return unique
+
+
 def extract_candidates(payload: dict, *, external_candidates: list[dict] | None = None) -> dict:
-    """Group supported Recorder liens and optional external tax signals by APN."""
+    """Group Recorder, prior verified, and optional external signals by APN."""
     if not isinstance(payload, dict) or not isinstance(payload.get("leads"), list):
         raise ValueError("leads input must be an object containing a leads list")
 
     grouped: dict[str, list[dict]] = {}
+    prior_grouped: dict[str, dict[str, list[dict]]] = {}
     excluded: list[dict] = []
     reasons: Counter[str] = Counter()
     for index, record in enumerate(payload["leads"]):
         if not isinstance(record, dict):
             continue
-        if record.get("county") != "Pima" or record.get("doc_type") not in SUPPORTED_LIEN_TYPES:
+        if record.get("county") != "Pima":
+            continue
+        is_recorder_signal = record.get("doc_type") in SUPPORTED_LIEN_TYPES
+        is_prior_verified = (
+            record.get("doc_code") == "TAX3"
+            and record.get("source") == "pima_treasurer_property_inquiry"
+        )
+        if not is_recorder_signal and not is_prior_verified:
             continue
         apn: str | None = None
         if record.get("resolved") is not True:
@@ -109,7 +129,22 @@ def extract_candidates(payload: dict, *, external_candidates: list[dict] | None 
             })
             continue
         assert apn is not None
-        grouped.setdefault(apn, []).append(_evidence_summary(record))
+        if is_recorder_signal:
+            grouped.setdefault(apn, []).append(_evidence_summary(record))
+        else:
+            prior = prior_grouped.setdefault(
+                apn, {"recorder_lien_evidence": [], "external_signal_evidence": []}
+            )
+            prior_recorder = record.get("recorder_lien_evidence")
+            if isinstance(prior_recorder, list):
+                prior["recorder_lien_evidence"].extend(
+                    _evidence_summary(item) for item in prior_recorder if isinstance(item, dict)
+                )
+            prior_external = record.get("external_signal_evidence")
+            if isinstance(prior_external, list):
+                prior["external_signal_evidence"].extend(
+                    _external_evidence_summary(item) for item in prior_external if isinstance(item, dict)
+                )
 
     external_grouped: dict[str, list[dict]] = {}
     if external_candidates is not None:
@@ -144,9 +179,12 @@ def extract_candidates(payload: dict, *, external_candidates: list[dict] | None 
             external_grouped.setdefault(apn, []).append(_external_evidence_summary(record))
 
     candidates = []
-    for apn in sorted(set(grouped) | set(external_grouped)):
+    for apn in sorted(set(grouped) | set(prior_grouped) | set(external_grouped)):
+        prior = prior_grouped.get(
+            apn, {"recorder_lien_evidence": [], "external_signal_evidence": []}
+        )
         evidence = sorted(
-            grouped.get(apn, []),
+            _unique_evidence(grouped.get(apn, []) + prior["recorder_lien_evidence"]),
             key=lambda item: (
                 str(item.get("recorded_date") or ""),
                 str(item.get("doc_number") or ""),
@@ -154,7 +192,9 @@ def extract_candidates(payload: dict, *, external_candidates: list[dict] | None 
             ),
         )
         external_evidence = sorted(
-            external_grouped.get(apn, []),
+            _unique_evidence(
+                external_grouped.get(apn, []) + prior["external_signal_evidence"]
+            ),
             key=lambda item: (
                 str(item.get("source") or ""),
                 str(item.get("source_record_id") or ""),

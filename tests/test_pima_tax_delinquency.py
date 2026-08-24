@@ -138,6 +138,33 @@ class CandidateExtractionTests(unittest.TestCase):
         self.assertEqual("dealmachine_existing_export", candidate["external_signal_evidence"][0]["source"])
         self.assertNotIn("doc_type", candidate["external_signal_evidence"][0])
 
+    def test_existing_verified_tax_lead_is_revalidated_without_becoming_recorder_evidence(self):
+        prior = lead(
+            apn="140-15-0530",
+            doc_type="Tax Delinquent 3+ Years",
+            doc_number="PIMA-TAX3-140150530",
+            source="pima_treasurer_property_inquiry",
+            doc_code="TAX3",
+            recorder_lien_evidence=[],
+            external_signal_evidence=[{
+                "source": "dealmachine_existing_export_2026-08-24",
+                "signal_type": "tax_delinquent_flag",
+                "source_record_id": "1951-e-virginia-st",
+                "property_address": "1951 E VIRGINIA ST",
+                "tax_delinquent_year": "2024",
+            }],
+        )
+
+        result = extract_candidates({"leads": [prior]})
+
+        self.assertEqual(["140150530"], [c["apn_norm"] for c in result["candidates"]])
+        candidate = result["candidates"][0]
+        self.assertEqual([], candidate["recorder_lien_evidence"])
+        self.assertEqual(
+            "dealmachine_existing_export_2026-08-24",
+            candidate["external_signal_evidence"][0]["source"],
+        )
+
 
 class OfficialHtmlParsingTests(unittest.TestCase):
     def test_valid_empty_balance_table_is_verified_clear(self):
