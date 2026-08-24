@@ -103,9 +103,16 @@ jobs:
         continue-on-error: true
         run: PYTHONPATH=. python scrapers/pima_deeds.py --days 90
 
-      - name: Pima treasurer delinquency (feed-ready; no-op if file absent)
+      - name: Test safety-critical pipelines
+        run: PYTHONPATH=. python -m unittest discover -s tests -v
+
+      - name: Pima Treasurer APN verification (official property inquiry, fail-soft)
+        if: ${{ hashFiles('data/leads.json') != '' }}
         continue-on-error: true
-        run: PYTHONPATH=. python pipeline/enrich_treasurer.py
+        run: |
+          PYTHONPATH=. python scrapers/pima_tax_delinquency.py \
+            --leads data/leads.json \
+            --as-of "$(date -u +%F)"
 
       - name: Preserve historical dashboard before rolling-window build
         run: cp data/leads.json /tmp/leads-baseline.json
@@ -115,10 +122,21 @@ jobs:
 
       - name: Merge fresh leads into protected historical dashboard
         run: |
+          tax_snapshot_args=()
+          if python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("data/pima_tax_verification_summary.json")
+          raise SystemExit(0 if p.exists() and json.loads(p.read_text()).get("status") == "complete" else 1)
+          PY
+          then
+            tax_snapshot_args=(--authoritative-doc-code TAX3)
+          fi
           PYTHONPATH=. python pipeline/merge_leads_history.py \
             --baseline /tmp/leads-baseline.json \
             --fresh data/leads.json \
-            --output data/leads.json
+            --output data/leads.json \
+            "${tax_snapshot_args[@]}"
 
       - name: Sanity check — refuse to commit a gutted dashboard
         run: |

@@ -39,22 +39,37 @@ def main() -> None:
     parser.add_argument("--baseline", required=True, type=Path)
     parser.add_argument("--fresh", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--authoritative-doc-code", action="append", default=[],
+        help="Doc code whose fresh rows are a complete snapshot; stale baseline rows are removed",
+    )
     args = parser.parse_args()
 
     baseline = load(args.baseline)
     fresh = load(args.fresh)
     old_rows = baseline["leads"]
     fresh_rows = fresh["leads"]
+    authoritative_codes = set(args.authoritative_doc_code)
 
-    merged = {stable_key(row): row for row in old_rows}
-    old_keys = set(merged)
+    old_by_key = {stable_key(row): row for row in old_rows}
+    old_keys = set(old_by_key)
+    merged = {
+        key: row for key, row in old_by_key.items()
+        if row.get("doc_code") not in authoritative_codes
+    }
     for row in fresh_rows:
         merged[stable_key(row)] = row
     rows = list(merged.values())
     rows.sort(key=lambda row: (row.get("recorded_date") or "", row.get("doc_number") or ""), reverse=True)
 
-    if len(rows) < len(old_rows):
-        raise SystemExit(f"history merge reduced lead count: baseline={len(old_rows)} merged={len(rows)}")
+    protected_old_count = sum(
+        1 for row in old_rows if row.get("doc_code") not in authoritative_codes
+    )
+    if len(rows) < protected_old_count:
+        raise SystemExit(
+            "history merge reduced non-authoritative lead count: "
+            f"protected_baseline={protected_old_count} merged={len(rows)}"
+        )
 
     out = dict(baseline)
     out.update({k: v for k, v in fresh.items() if k != "leads"})
@@ -75,9 +90,14 @@ def main() -> None:
     out["leads"] = rows
 
     args.output.write_text(json.dumps(out, separators=(",", ":")))
+    fresh_keys = {stable_key(r) for r in fresh_rows}
+    final_keys = set(merged)
     result = {
-        "baseline": len(old_rows), "fresh": len(fresh_rows), "overlap": len(old_keys & {stable_key(r) for r in fresh_rows}),
-        "new": len({stable_key(r) for r in fresh_rows} - old_keys), "preserved": len(old_keys - {stable_key(r) for r in fresh_rows}),
+        "baseline": len(old_rows), "fresh": len(fresh_rows),
+        "overlap": len(old_keys & fresh_keys),
+        "new": len(fresh_keys - old_keys),
+        "preserved": len((old_keys & final_keys) - fresh_keys),
+        "removed_authoritative": len(old_keys - final_keys),
         "merged": len(rows), "date_range": out["date_range"],
         "county_counts": dict(Counter(row.get("county") for row in rows)),
     }

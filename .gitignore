@@ -26,6 +26,8 @@ data/*.csv
 data/*.bak
 data/pima_assessor/
 data/pima_tax_delinquent.xlsx
+data/pima_tax_verification_summary.json
+data/pima_tax_external_candidates.local.json
 data/_debug/
 !data/leads.json
 
