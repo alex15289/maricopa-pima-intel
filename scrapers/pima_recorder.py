@@ -241,8 +241,18 @@ def enter_doc_type_search(page):
 # robust: run an UNFILTERED date-range search (the grid renders every doc type
 # with its label) and filter to the approved types in code. A wide window
 # exceeds the render cap, so we chunk the date range into CHUNK_DAYS-day slices.
-CHUNK_DAYS = 7           # ~2,900 records/slice — renders and paginates cleanly
+CHUNK_DAYS = 1           # one day per search avoids Tyler's broad-result truncation
 PAGE_SIZE_GUESS = 100    # portal renders 100 rows/page
+DAILY_RESULT_SAFETY_LIMIT = 2000
+
+
+def validate_daily_result_count(raw_row_count: int, search_date: str) -> None:
+    """Refuse a suspiciously large day instead of trusting a potentially capped result."""
+    if raw_row_count >= DAILY_RESULT_SAFETY_LIMIT:
+        raise RuntimeError(
+            f"possible portal truncation for {search_date}: "
+            f"received {raw_row_count} raw rows; refusing to publish partial data"
+        )
 
 # Structural parser + paginator, run inside the page. Reads each result row's
 # labeled columns (Recording Date / Grantor (n) / Grantee (n)) — innerText regex
@@ -269,16 +279,19 @@ async (args) => {
     return { seq, type, dt, grantors: g, grantees: e };
   };
   const all = [];
+  let rawRowCount = 0;
   for (let p = 1; p <= 60; p++) {
     const r = await fetch(`/web/searchResults/${ctx}?page=${p}&_=` + Date.now(), { cache: 'no-store' });
-    if (/user\/disclaimer/i.test(r.url)) return { expired: true, records: all };
+    if (/user\/disclaimer/i.test(r.url)) return { expired: true, records: all, raw_row_count: rawRowCount };
     const html = await r.text();
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    const rows = [...doc.querySelectorAll('.selfServiceSearchRowRight')].filter(x => /\d{11}/.test(x.textContent));
-    if (!rows.length) break;
+    const portalRows = [...doc.querySelectorAll('.selfServiceSearchRowRight')];
+    if (!portalRows.length) break;
+    rawRowCount += portalRows.length;
+    const rows = portalRows.filter(x => /\d{11}/.test(x.textContent));
     for (const row of rows) { const rec = parseRow(row); if (rec.seq) all.push(rec); }
   }
-  return { expired: false, records: all };
+  return { expired: false, records: all, raw_row_count: rawRowCount };
 }
 """
 
@@ -287,6 +300,23 @@ def _ctx(page) -> str:
     import re
     m = re.search(r"DOCSEARCH\d+S\d+", page.url)
     return m.group(0) if m else ""
+
+
+def normalize_search_result(res: dict, search_date: str) -> list[dict]:
+    """Validate the raw portal response before parse loss or deduplication."""
+    raw_row_count = res.get("raw_row_count")
+    if isinstance(raw_row_count, bool) or not isinstance(raw_row_count, int) or raw_row_count < 0:
+        raise RuntimeError(
+            f"missing valid raw row count for {search_date}; refusing to publish unverified data"
+        )
+    validate_daily_result_count(raw_row_count, search_date)
+    # dedupe by seq within the window
+    seen, out = set(), []
+    for r in res.get("records", []):
+        if r.get("seq") and r["seq"] not in seen:
+            seen.add(r["seq"])
+            out.append(r)
+    return out
 
 
 def search_and_collect(page, begin: str, end: str) -> list[dict]:
@@ -301,13 +331,7 @@ def search_and_collect(page, begin: str, end: str) -> list[dict]:
     res = page.evaluate(_PAGE_JS, [_ctx(page), begin, end])
     if res.get("expired"):
         raise SessionExpired()
-    # dedupe by seq within the window
-    seen, out = set(), []
-    for r in res["records"]:
-        if r["seq"] and r["seq"] not in seen:
-            seen.add(r["seq"])
-            out.append(r)
-    return out
+    return normalize_search_result(res, begin)
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +419,11 @@ def _date_chunks(begin: date, end: date, size: int):
         cur = stop + timedelta(days=1)
 
 
+def planned_chunks(begin: date, end: date):
+    """Use one portal search per calendar day to stay below Tyler's result cap."""
+    return _date_chunks(begin, end, CHUNK_DAYS)
+
+
 def run(labels: list[str], days: int) -> None:
     end = date.today()
     begin = end - timedelta(days=days)
@@ -440,7 +469,7 @@ def run(labels: list[str], days: int) -> None:
                 page.goto(PORTAL, wait_until="domcontentloaded")
                 wait_for_acceptance(page)
 
-        chunks = list(_date_chunks(begin, end, CHUNK_DAYS))
+        chunks = list(planned_chunks(begin, end))
         log(f"session live. window {begin}..{end} ({days}d) in {len(chunks)} "
             f"{CHUNK_DAYS}-day chunks. keeping {len(approved)} doc types.")
         try:
