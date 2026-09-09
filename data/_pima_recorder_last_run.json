@@ -1,6 +1,6 @@
 {
- "last_run": "2026-09-08T23:55:41Z",
- "run_date": "2026-09-08",
+ "last_run": "2026-09-09T13:47:28Z",
+ "run_date": "2026-09-09",
  "window_days": 8,
  "types": [
   "Affidavit Terminating JT/CP",
@@ -19,5 +19,5 @@
   "Trustee's Deed"
  ],
  "records": 2285,
- "new": 42
+ "new": 0
 }
