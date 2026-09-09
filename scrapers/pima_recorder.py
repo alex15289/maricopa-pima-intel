@@ -424,6 +424,11 @@ def planned_chunks(begin: date, end: date):
     return _date_chunks(begin, end, CHUNK_DAYS)
 
 
+def reported_doc_types(approved: dict[str, dict]) -> list[str]:
+    """Report every configured type, including types seen before a resume."""
+    return sorted({meta["doc_type"] for meta in approved.values()})
+
+
 def run(labels: list[str], days: int) -> None:
     end = date.today()
     begin = end - timedelta(days=days)
@@ -526,7 +531,7 @@ def run(labels: list[str], days: int) -> None:
     (DATA_DIR / "_pima_recorder_last_run.json").write_text(json.dumps({
         "last_run": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "run_date": run_date, "window_days": days,
-        "types": sorted(per_type_samples), "records": len(store), "new": new_count,
+        "types": reported_doc_types(approved), "records": len(store), "new": new_count,
     }, indent=1))
     log(f"✓ done. {new_count} new records this run, store now {len(store):,} → {OUT_PATH.name}. "
         f"{len(state['completed'])}/{len(chunks)} chunks complete.")

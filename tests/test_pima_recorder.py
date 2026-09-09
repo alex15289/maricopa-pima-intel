@@ -30,6 +30,16 @@ class PimaRecorderCompletenessTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "missing valid raw row count"):
             pima_recorder.normalize_search_result({"records": []}, "09/01/2026")
 
+    def test_reported_types_cover_configured_search_after_resume(self):
+        approved = {
+            "NOTICE SALE": {"doc_type": "Notice of Trustee Sale"},
+            "DEED DISTRIBUTION": {"doc_type": "Deed of Distribution"},
+        }
+        self.assertEqual(
+            pima_recorder.reported_doc_types(approved),
+            ["Deed of Distribution", "Notice of Trustee Sale"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
