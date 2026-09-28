@@ -38,9 +38,10 @@ fi
 echo "[3/5] Maricopa recorder documents (last $DAYS days)..."
 $PYTHON scrapers/maricopa_recorder_api.py --days "$DAYS" || echo "  (recorder failed — fail-soft)"
 
-echo "[4/5] Pima deed transfers (GIS layer 12) + treasurer feed..."
+echo "[4/5] Pima deed transfers (GIS layer 12) + treasurer feed + Tucson code cases..."
 $PYTHON scrapers/pima_deeds.py --days 90 || echo "  (pima deeds failed — fail-soft)"
 $PYTHON pipeline/enrich_treasurer.py || echo "  (treasurer translator failed — fail-soft)"
+$PYTHON scrapers/tucson_code_violations.py || echo "  (Tucson code cases failed — fail-soft)"
 
 echo "[5/5] Build doc-type leads..."
 $PYTHON -m pipeline.build_docleads

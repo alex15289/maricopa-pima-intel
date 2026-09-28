@@ -22,6 +22,8 @@ def lead(doc_number, *, code="NS", as_of="2026-08-23"):
         "recorded_date": as_of,
         "as_of": as_of,
         "resolved": True,
+        "status": "active" if code == "NS" else None,
+        "status_provisional": code == "NS",
     }
 
 
@@ -72,6 +74,19 @@ class AuthoritativeHistoryMergeTests(unittest.TestCase):
         out = self.run_merge([old_tax], [])
 
         self.assertEqual(["PIMA-TAX3-111111111"], [row["doc_number"] for row in out["leads"]])
+
+    def test_lifecycle_totals_are_recomputed_from_merged_rows(self):
+        cancelled = lead("NS-OLD")
+        cancelled.update(status="cancelled", status_provisional=False)
+        fresh_active = lead("NS-NEW")
+
+        out = self.run_merge([cancelled], [fresh_active])
+
+        lifecycle = out["foreclosure_lifecycle"]
+        self.assertEqual(2, lifecycle["ns_total"])
+        self.assertEqual(1, lifecycle["ns_cancelled"])
+        self.assertEqual(1, lifecycle["ns_active_provisional"])
+        self.assertEqual("fresh_build_only", lifecycle["closer_snapshot"]["scope"])
 
 
 if __name__ == "__main__":

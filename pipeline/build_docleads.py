@@ -308,6 +308,7 @@ def build(limit_dashboard: int = DASHBOARD_CAP) -> dict:
     pima_deed_docs = load_jsonl(DATA_DIR / "pima_recorder_docs.jsonl")          # GIS deed transfers (pre-resolved)
     pima_portal_docs = load_jsonl(DATA_DIR / "pima_recorder_docs_portal.jsonl") # attended recorder distress docs
     tax_docs = load_jsonl(DATA_DIR / "pima_tax_docs.jsonl")
+    code_docs = load_jsonl(DATA_DIR / "tucson_code_violation_docs.jsonl")        # official Tucson ArcGIS cases
 
     # ---- resolve recorder docs (name-only sources) --------------------------
     # Maricopa recorder + Pima recorder-portal docs carry party names, not APNs.
@@ -318,7 +319,7 @@ def build(limit_dashboard: int = DASHBOARD_CAP) -> dict:
     resolve_recorder_docs(mar_docs, mar_parcels, "Maricopa")
     resolve_recorder_docs(pima_portal_docs, pima_parcels_only, "Pima recorder")
 
-    all_docs = mar_docs + pima_deed_docs + pima_portal_docs + tax_docs
+    all_docs = mar_docs + pima_deed_docs + pima_portal_docs + tax_docs + code_docs
 
     # ---- foreclosure lifecycle (CQ/TD close NS) ------------------------------
     leads, life_stats = apply_foreclosure_lifecycle(all_docs, today)

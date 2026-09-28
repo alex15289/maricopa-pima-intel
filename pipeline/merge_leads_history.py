@@ -34,6 +34,45 @@ def load(path: Path) -> dict:
     return payload
 
 
+def recompute_foreclosure_lifecycle(rows: list[dict], fresh_metadata: dict) -> dict:
+    """Recompute lead-status totals from the final merged universe.
+
+    Closing documents are consumed by the builder, so their counts cannot be
+    reconstructed from merged lead rows. Preserve them only as an explicitly
+    scoped fresh-build snapshot instead of presenting them as merged totals.
+    """
+    ns_rows = [row for row in rows if row.get("doc_code") == "NS"]
+    result: dict[str, object] = {
+        "ns_total": len(ns_rows),
+        "ns_cancelled": sum(row.get("status") == "cancelled" for row in ns_rows),
+        "ns_completed": sum(row.get("status") == "completed" for row in ns_rows),
+        "ns_active_confirmed": sum(
+            row.get("status") == "active" and not row.get("status_provisional")
+            for row in ns_rows
+        ),
+        "ns_active_provisional": sum(
+            row.get("status") == "active" and bool(row.get("status_provisional"))
+            for row in ns_rows
+        ),
+    }
+    fresh_lifecycle = fresh_metadata.get("foreclosure_lifecycle") or {}
+    for key in (
+        "coverage_start", "coverage_days", "history_confident",
+        "confirm_coverage_days",
+    ):
+        if key in fresh_lifecycle:
+            result[key] = fresh_lifecycle[key]
+    result["closer_snapshot"] = {
+        "scope": "fresh_build_only",
+        **{
+            key: fresh_lifecycle[key]
+            for key in ("closers_total", "closers_matched", "closers_dropped")
+            if key in fresh_lifecycle
+        },
+    }
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--baseline", required=True, type=Path)
@@ -88,6 +127,7 @@ def main() -> None:
     out["doc_type_counts"] = {county: dict(values.most_common()) for county, values in counts.items()}
     out["doc_type_category"] = categories
     out["leads"] = rows
+    out["foreclosure_lifecycle"] = recompute_foreclosure_lifecycle(rows, fresh)
 
     args.output.write_text(json.dumps(out, separators=(",", ":")))
     fresh_keys = {stable_key(r) for r in fresh_rows}
