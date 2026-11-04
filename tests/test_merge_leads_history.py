@@ -88,6 +88,16 @@ class AuthoritativeHistoryMergeTests(unittest.TestCase):
         self.assertEqual(1, lifecycle["ns_active_provisional"])
         self.assertEqual("fresh_build_only", lifecycle["closer_snapshot"]["scope"])
 
+    def test_published_aggregate_counts_are_recomputed_from_merged_rows(self):
+        pima = lead("NS-PIMA")
+        maricopa = lead("J-MARICOPA")
+        maricopa.update(county="Maricopa", doc_type="Judgment", category="Court")
+
+        out = self.run_merge([pima], [maricopa])
+
+        self.assertEqual({"Pima": 1, "Maricopa": 1}, out["county_counts"])
+        self.assertEqual({"Notice": 1, "Judgment": 1}, out["type_counts"])
+
 
 if __name__ == "__main__":
     unittest.main()

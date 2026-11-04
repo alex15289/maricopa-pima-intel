@@ -126,6 +126,8 @@ def main() -> None:
         categories[row.get("doc_type")] = row.get("category", "Other")
     out["doc_type_counts"] = {county: dict(values.most_common()) for county, values in counts.items()}
     out["doc_type_category"] = categories
+    out["county_counts"] = dict(Counter(row.get("county") for row in rows))
+    out["type_counts"] = dict(Counter(row.get("doc_type") for row in rows))
     out["leads"] = rows
     out["foreclosure_lifecycle"] = recompute_foreclosure_lifecycle(rows, fresh)
 
